@@ -1,6 +1,8 @@
 package com.koushik.systemSimulator.application.builder;
 
-import com.koushik.systemSimulator.application.model.SimulationScenario;
+import com.koushik.systemSimulator.application.model.NodeConfig;
+import com.koushik.systemSimulator.application.model.NodeType;
+import com.koushik.systemSimulator.application.model.SimulationCommand;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -10,7 +12,7 @@ class ScenarioBuilderTest {
 
 	@Test
 	void buildsValidScenario() {
-		SimulationScenario scenario = ScenarioBuilder.create()
+		SimulationCommand command = ScenarioBuilder.create()
 				.addLoadBalancer("lb", 1)
 				.addService("service", 10, 20, 100)
 				.addDatabase("db", 5, 10, 200)
@@ -19,9 +21,20 @@ class ScenarioBuilderTest {
 				.withRequestCount(100)
 				.build();
 
-		assertEquals(100, scenario.requestCount());
-		assertEquals("service", scenario.topology().getNodeDefinition("lb").downstreamNodeId());
-		assertEquals("db", scenario.topology().getNodeDefinition("service").downstreamNodeId());
+		assertEquals(100, command.getRequestCount());
+		assertEquals(3, command.getNodes().size());
+		NodeConfig loadBalancer = command.getNodes().stream()
+				.filter(node -> node.getNodeId().equals("lb"))
+				.findFirst()
+				.orElseThrow();
+		NodeConfig service = command.getNodes().stream()
+				.filter(node -> node.getNodeId().equals("service"))
+				.findFirst()
+				.orElseThrow();
+		assertEquals(NodeType.LOAD_BALANCER, loadBalancer.getNodeType());
+		assertEquals(NodeType.SERVICE, service.getNodeType());
+		assertEquals("service", command.getConnections().get(0).getTargetNodeId());
+		assertEquals("db", command.getConnections().get(1).getTargetNodeId());
 	}
 
 	@Test

@@ -1,3 +1,7 @@
 spring:
   application:
     name: systemSimulator
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html

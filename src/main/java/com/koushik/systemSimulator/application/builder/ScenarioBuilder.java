@@ -1,6 +1,6 @@
 package com.koushik.systemSimulator.application.builder;
 
-import com.koushik.systemSimulator.application.model.SimulationScenario;
+import com.koushik.systemSimulator.application.model.SimulationCommand;
 
 public interface ScenarioBuilder {
 
@@ -18,5 +18,5 @@ public interface ScenarioBuilder {
 
 	ScenarioBuilder withRequestCount(int requestCount);
 
-	SimulationScenario build();
+	SimulationCommand build();
 }

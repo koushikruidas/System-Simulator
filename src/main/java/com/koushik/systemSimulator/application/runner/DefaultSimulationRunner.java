@@ -1,12 +1,15 @@
 package com.koushik.systemSimulator.application.runner;
 
-import com.koushik.systemSimulator.application.factory.EngineAssemblyFactory;
-import com.koushik.systemSimulator.application.model.SimulationScenario;
-import com.koushik.systemSimulator.application.model.SimulationSummaryReport;
+import com.koushik.systemSimulator.application.adapter.SimulationScenarioAdapter;
+import com.koushik.systemSimulator.application.factory.SimulationEngineFactory;
+import com.koushik.systemSimulator.application.model.NodeType;
+import com.koushik.systemSimulator.application.model.SimulationCommand;
+import com.koushik.systemSimulator.application.model.SimulationResult;
 import com.koushik.systemSimulator.simulation.engine.SimulationEngine;
 import com.koushik.systemSimulator.simulation.model.EventType;
 import com.koushik.systemSimulator.simulation.model.Request;
 import com.koushik.systemSimulator.simulation.model.SimulationEvent;
+import com.koushik.systemSimulator.simulation.scenario.Topology;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -16,29 +19,36 @@ import java.util.stream.IntStream;
 @Service
 public class DefaultSimulationRunner implements SimulationRunner {
 
-	private final EngineAssemblyFactory engineAssemblyFactory;
-	private final ReportAssembler reportAssembler;
+	private final SimulationScenarioAdapter scenarioAdapter;
+	private final SimulationEngineFactory simulationEngineFactory;
+	private final SimulationResultAssembler resultAssembler;
 
-	public DefaultSimulationRunner(EngineAssemblyFactory engineAssemblyFactory, ReportAssembler reportAssembler) {
-		this.engineAssemblyFactory = engineAssemblyFactory;
-		this.reportAssembler = reportAssembler;
+	public DefaultSimulationRunner(
+			SimulationScenarioAdapter scenarioAdapter,
+			SimulationEngineFactory simulationEngineFactory,
+			SimulationResultAssembler resultAssembler
+	) {
+		this.scenarioAdapter = scenarioAdapter;
+		this.simulationEngineFactory = simulationEngineFactory;
+		this.resultAssembler = resultAssembler;
 	}
 
 	@Override
-	public SimulationSummaryReport run(SimulationScenario scenario) {
-		SimulationEngine engine = engineAssemblyFactory.create(scenario);
-		com.koushik.systemSimulator.simulation.engine.SimulationReport engineReport = engine.run(seedEvents(scenario));
-		return reportAssembler.assemble(scenario, engineReport);
+	public SimulationResult run(SimulationCommand command) {
+		Topology topology = scenarioAdapter.toDomainTopology(command);
+		SimulationEngine engine = simulationEngineFactory.create(topology);
+		com.koushik.systemSimulator.simulation.engine.SimulationReport engineReport = engine.run(seedEvents(command));
+		return resultAssembler.assemble(command, engineReport);
 	}
 
-	private List<SimulationEvent> seedEvents(SimulationScenario scenario) {
-		String entryNodeId = scenario.topology().nodeDefinitions().stream()
-				.filter(nodeDefinition -> nodeDefinition.nodeType() == com.koushik.systemSimulator.simulation.model.NodeType.LOAD_BALANCER)
+	private List<SimulationEvent> seedEvents(SimulationCommand command) {
+		String entryNodeId = command.getNodes().stream()
+				.filter(node -> node.getNodeType() == NodeType.LOAD_BALANCER)
 				.findFirst()
 				.orElseThrow(() -> new IllegalArgumentException("Scenario must contain a load balancer"))
-				.nodeId();
+				.getNodeId();
 
-		return IntStream.range(0, scenario.requestCount())
+		return IntStream.range(0, command.getRequestCount())
 				.mapToObj(index -> {
 					String requestId = "request-" + (index + 1);
 					Request request = new Request(requestId, "HTTP", 0, Map.of());

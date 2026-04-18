@@ -11,7 +11,7 @@ public class LoadBalancerNodeFactory implements SimNodeFactory {
 
 	@Override
 	public NodeType supportedType() {
-		return NodeType.LOAD_BALANCER;
+		return NodeType.DELAY_LOAD_BALANCER;
 	}
 
 	@Override

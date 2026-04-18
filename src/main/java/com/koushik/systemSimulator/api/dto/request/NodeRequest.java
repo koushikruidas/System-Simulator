@@ -4,12 +4,29 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
-public record NodeRequest(
-		@NotBlank String id,
-		@NotNull ApiNodeType type,
-		@Positive Integer capacity,
-		@PositiveOrZero Integer queueLimit,
-		@PositiveOrZero Long latency
-) {
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class NodeRequest {
+
+	@NotBlank
+	private String id;
+
+	@NotNull
+	private ApiNodeType type;
+
+	@Positive
+	private Integer capacity;
+
+	@PositiveOrZero
+	private Integer queueLimit;
+
+	@PositiveOrZero
+	private Long latency;
 }

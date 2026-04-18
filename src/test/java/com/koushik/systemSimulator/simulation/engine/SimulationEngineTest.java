@@ -87,7 +87,7 @@ class SimulationEngineTest {
 	private Topology singlePathTopology() {
 		return new Topology(
 				List.of(
-						new NodeDefinition("lb", NodeType.LOAD_BALANCER, 0, 0, 1, "service"),
+						new NodeDefinition("lb", NodeType.DELAY_LOAD_BALANCER, 0, 0, 1, "service"),
 						new NodeDefinition("service", NodeType.SERVICE, 1, 1, 5, "db"),
 						new NodeDefinition("db", NodeType.DATABASE, 1, 1, 10, null)
 				),
@@ -101,7 +101,7 @@ class SimulationEngineTest {
 	private Topology queuePressureTopology() {
 		return new Topology(
 				List.of(
-						new NodeDefinition("lb", NodeType.LOAD_BALANCER, 0, 0, 0, "service"),
+						new NodeDefinition("lb", NodeType.DELAY_LOAD_BALANCER, 0, 0, 0, "service"),
 						new NodeDefinition("service", NodeType.SERVICE, 1, 1, 5, "db"),
 						new NodeDefinition("db", NodeType.DATABASE, 1, 1, 2, null)
 				),

@@ -9,8 +9,10 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest(properties = {
@@ -77,5 +79,17 @@ class SimulationControllerIntegrationTest {
 				.andExpect(jsonPath("$.message").value("Request validation failed"))
 				.andExpect(jsonPath("$.path").value("/simulate"))
 				.andExpect(jsonPath("$.fieldErrors").isArray());
+	}
+
+	@Test
+	void exposesOpenApiDocumentationAndSwaggerUi() throws Exception {
+		mockMvc.perform(get("/v3/api-docs"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.paths['/simulate']").exists())
+				.andExpect(jsonPath("$.info.title").value("System Simulator API"));
+
+		mockMvc.perform(get("/swagger-ui.html"))
+				.andExpect(status().is3xxRedirection())
+				.andExpect(redirectedUrl("/swagger-ui/index.html"));
 	}
 }

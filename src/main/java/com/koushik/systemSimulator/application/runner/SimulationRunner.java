@@ -1,9 +1,9 @@
 package com.koushik.systemSimulator.application.runner;
 
-import com.koushik.systemSimulator.application.model.SimulationScenario;
-import com.koushik.systemSimulator.application.model.SimulationSummaryReport;
+import com.koushik.systemSimulator.application.model.SimulationCommand;
+import com.koushik.systemSimulator.application.model.SimulationResult;
 
 public interface SimulationRunner {
 
-	SimulationSummaryReport run(SimulationScenario scenario);
+	SimulationResult run(SimulationCommand command);
 }

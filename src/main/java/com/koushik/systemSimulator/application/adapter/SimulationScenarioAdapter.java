@@ -1,0 +1,84 @@
+package com.koushik.systemSimulator.application.adapter;
+
+import com.koushik.systemSimulator.application.model.ConnectionConfig;
+import com.koushik.systemSimulator.application.model.NodeConfig;
+import com.koushik.systemSimulator.application.model.NodeType;
+import com.koushik.systemSimulator.application.model.SimulationCommand;
+import com.koushik.systemSimulator.simulation.scenario.LinkDefinition;
+import com.koushik.systemSimulator.simulation.scenario.NodeDefinition;
+import com.koushik.systemSimulator.simulation.scenario.Topology;
+import org.springframework.stereotype.Component;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+@Component
+public class SimulationScenarioAdapter {
+
+	private final NodeConfigMapperRegistry nodeConfigMapperRegistry;
+
+	public SimulationScenarioAdapter(NodeConfigMapperRegistry nodeConfigMapperRegistry) {
+		this.nodeConfigMapperRegistry = nodeConfigMapperRegistry;
+	}
+
+	public Topology toDomainTopology(SimulationCommand command) {
+		Map<String, NodeConfig> nodeConfigsById = new LinkedHashMap<>();
+		for (NodeConfig nodeConfig : command.getNodes()) {
+			if (nodeConfigsById.put(nodeConfig.getNodeId(), nodeConfig) != null) {
+				throw new IllegalArgumentException("Duplicate node id " + nodeConfig.getNodeId());
+			}
+		}
+
+		Map<String, String> downstreamBySource = new LinkedHashMap<>();
+		List<LinkDefinition> links = new ArrayList<>();
+		for (ConnectionConfig connection : command.getConnections()) {
+			if (!nodeConfigsById.containsKey(connection.getSourceNodeId())) {
+				throw new IllegalArgumentException("Node " + connection.getSourceNodeId() + " does not exist");
+			}
+			if (!nodeConfigsById.containsKey(connection.getTargetNodeId())) {
+				throw new IllegalArgumentException("Node " + connection.getTargetNodeId() + " does not exist");
+			}
+			if (downstreamBySource.put(connection.getSourceNodeId(), connection.getTargetNodeId()) != null) {
+				throw new IllegalArgumentException("Node " + connection.getSourceNodeId() + " already has a downstream connection");
+			}
+			links.add(new LinkDefinition(connection.getSourceNodeId(), connection.getTargetNodeId()));
+		}
+
+		validateTopology(nodeConfigsById, downstreamBySource);
+
+		List<NodeDefinition> nodeDefinitions = nodeConfigsById.values().stream()
+				.map(nodeConfig -> nodeConfigMapperRegistry.toDomain(
+						nodeConfig,
+						downstreamBySource.get(nodeConfig.getNodeId())))
+				.toList();
+		return new Topology(nodeDefinitions, links);
+	}
+
+	private void validateTopology(Map<String, NodeConfig> nodeConfigsById, Map<String, String> downstreamBySource) {
+		if (nodeConfigsById.isEmpty()) {
+			throw new IllegalArgumentException("At least one node is required");
+		}
+		long loadBalancers = nodeConfigsById.values().stream()
+				.filter(node -> node.getNodeType() == NodeType.LOAD_BALANCER)
+				.count();
+		if (loadBalancers != 1) {
+			throw new IllegalArgumentException("Exactly one load balancer is required");
+		}
+		if (nodeConfigsById.values().stream().noneMatch(node -> node.getNodeType() == NodeType.SERVICE)) {
+			throw new IllegalArgumentException("At least one service node is required");
+		}
+		if (nodeConfigsById.values().stream().noneMatch(node -> node.getNodeType() == NodeType.DATABASE)) {
+			throw new IllegalArgumentException("At least one database node is required");
+		}
+		for (NodeConfig nodeConfig : nodeConfigsById.values()) {
+			if (nodeConfig.getNodeType() == NodeType.DATABASE) {
+				continue;
+			}
+			if (!downstreamBySource.containsKey(nodeConfig.getNodeId())) {
+				throw new IllegalArgumentException("Node " + nodeConfig.getNodeId() + " must define a downstream connection");
+			}
+		}
+	}
+}
