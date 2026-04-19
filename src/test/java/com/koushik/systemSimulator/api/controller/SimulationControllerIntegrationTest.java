@@ -38,7 +38,7 @@ class SimulationControllerIntegrationTest {
 				  "requestCount": 1,
 				  "entryNodeId": "lb",
 				  "nodes": [
-				    {"id": "lb", "type": "LOAD_BALANCER", "latency": 1},
+				    {"id": "lb", "type": "LOAD_BALANCER", "strategy": "ROUND_ROBIN", "capacity": 1, "queueLimit": 0, "latency": 1},
 				    {"id": "service", "type": "SERVICE", "capacity": 1, "queueLimit": 1, "latency": 5},
 				    {"id": "db", "type": "DATABASE", "capacity": 1, "queueLimit": 1, "latency": 10}
 				  ],
@@ -88,7 +88,7 @@ class SimulationControllerIntegrationTest {
 				{
 				  "requestCount": 1,
 				  "nodes": [
-				    {"id": "lb", "type": "LOAD_BALANCER", "latency": 1},
+				    {"id": "lb", "type": "LOAD_BALANCER", "strategy": "ROUND_ROBIN", "capacity": 1, "queueLimit": 0, "latency": 1},
 				    {"id": "service", "type": "SERVICE", "capacity": 1, "queueLimit": 1, "latency": 5},
 				    {"id": "db", "type": "DATABASE", "capacity": 1, "queueLimit": 1, "latency": 10}
 				  ],
@@ -113,7 +113,7 @@ class SimulationControllerIntegrationTest {
 				  "requestCount": 1,
 				  "entryNodeId": "ghost",
 				  "nodes": [
-				    {"id": "lb", "type": "LOAD_BALANCER", "latency": 1},
+				    {"id": "lb", "type": "LOAD_BALANCER", "strategy": "ROUND_ROBIN", "capacity": 1, "queueLimit": 0, "latency": 1},
 				    {"id": "service", "type": "SERVICE", "capacity": 1, "queueLimit": 1, "latency": 5},
 				    {"id": "db", "type": "DATABASE", "capacity": 1, "queueLimit": 1, "latency": 10}
 				  ],
@@ -129,6 +129,61 @@ class SimulationControllerIntegrationTest {
 						.content(requestJson))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.message").value("Entry node 'ghost' does not exist in the topology"));
+	}
+
+	@Test
+	void simulatesRoundRobinLoadBalancerWithTwoServices() throws Exception {
+		String requestJson = """
+				{
+				  "requestCount": 4,
+				  "entryNodeId": "lb",
+				  "nodes": [
+				    {"id": "lb",  "type": "LOAD_BALANCER", "strategy": "ROUND_ROBIN", "capacity": 4, "queueLimit": 0, "latency": 0},
+				    {"id": "s1",  "type": "SERVICE", "capacity": 2, "queueLimit": 5, "latency": 10},
+				    {"id": "s2",  "type": "SERVICE", "capacity": 2, "queueLimit": 5, "latency": 10},
+				    {"id": "db",  "type": "DATABASE", "capacity": 4, "queueLimit": 10, "latency": 5}
+				  ],
+				  "connections": [
+				    {"sourceNodeId": "lb", "targetNodeId": "s1"},
+				    {"sourceNodeId": "lb", "targetNodeId": "s2"},
+				    {"sourceNodeId": "s1", "targetNodeId": "db"},
+				    {"sourceNodeId": "s2", "targetNodeId": "db"}
+				  ]
+				}
+				""";
+
+		mockMvc.perform(post("/simulate")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(requestJson))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.totalRequests").value(4))
+				.andExpect(jsonPath("$.successfulRequests").value(4))
+				.andExpect(jsonPath("$.nodeMetrics.s1.processedRequests").value(2))
+				.andExpect(jsonPath("$.nodeMetrics.s2.processedRequests").value(2));
+	}
+
+	@Test
+	void returnsErrorForLoadBalancerWithoutStrategy() throws Exception {
+		String requestJson = """
+				{
+				  "requestCount": 1,
+				  "entryNodeId": "lb",
+				  "nodes": [
+				    {"id": "lb", "type": "LOAD_BALANCER", "capacity": 1, "queueLimit": 0, "latency": 0},
+				    {"id": "service", "type": "SERVICE", "capacity": 1, "queueLimit": 1, "latency": 5},
+				    {"id": "db", "type": "DATABASE", "capacity": 1, "queueLimit": 1, "latency": 10}
+				  ],
+				  "connections": [
+				    {"sourceNodeId": "lb", "targetNodeId": "service"},
+				    {"sourceNodeId": "service", "targetNodeId": "db"}
+				  ]
+				}
+				""";
+
+		mockMvc.perform(post("/simulate")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(requestJson))
+				.andExpect(status().isBadRequest());
 	}
 
 	@Test

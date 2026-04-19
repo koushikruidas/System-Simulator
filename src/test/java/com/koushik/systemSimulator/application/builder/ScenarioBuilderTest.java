@@ -1,5 +1,6 @@
 package com.koushik.systemSimulator.application.builder;
 
+import com.koushik.systemSimulator.application.model.LbStrategy;
 import com.koushik.systemSimulator.application.model.NodeConfig;
 import com.koushik.systemSimulator.application.model.NodeType;
 import com.koushik.systemSimulator.application.model.SimulationCommand;
@@ -71,6 +72,27 @@ class ScenarioBuilderTest {
 						.build());
 
 		assertEquals("Node service must define a downstream connection", exception.getMessage());
+	}
+
+	@Test
+	void buildsRoundRobinLbWithMultipleDownstreams() {
+		SimulationCommand command = ScenarioBuilder.create()
+				.addLoadBalancer("lb", LbStrategy.ROUND_ROBIN, 2, 4, 0)
+				.addService("s1", 1, 5, 10)
+				.addService("s2", 1, 5, 10)
+				.addDatabase("db", 2, 5, 5)
+				.connect("lb", "s1")
+				.connect("lb", "s2")
+				.connect("s1", "db")
+				.connect("s2", "db")
+				.withRequestCount(4)
+				.withEntryNode("lb")
+				.build();
+
+		assertEquals(2, command.getConnections().stream()
+				.filter(c -> c.getSourceNodeId().equals("lb")).count());
+		assertEquals(LbStrategy.ROUND_ROBIN, command.getNodes().stream()
+				.filter(n -> n.getNodeId().equals("lb")).findFirst().orElseThrow().getStrategy());
 	}
 
 	@Test

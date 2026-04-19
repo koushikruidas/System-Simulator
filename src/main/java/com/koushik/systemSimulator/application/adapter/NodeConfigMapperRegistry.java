@@ -25,11 +25,11 @@ public class NodeConfigMapperRegistry {
 		this.mappersByType = Map.copyOf(registry);
 	}
 
-	public NodeDefinition toDomain(NodeConfig config, String downstreamNodeId) {
+	public NodeDefinition toDomain(NodeConfig config, List<String> downstreamNodeIds) {
 		NodeConfigMapper mapper = mappersByType.get(config.getNodeType());
 		if (mapper == null) {
 			throw new IllegalArgumentException("No node config mapper registered for type " + config.getNodeType());
 		}
-		return mapper.toDomain(config, downstreamNodeId);
+		return mapper.toDomain(config, downstreamNodeIds);
 	}
 }

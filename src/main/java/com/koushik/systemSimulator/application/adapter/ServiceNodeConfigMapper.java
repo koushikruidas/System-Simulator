@@ -5,6 +5,8 @@ import com.koushik.systemSimulator.application.model.NodeType;
 import com.koushik.systemSimulator.simulation.scenario.NodeDefinition;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
+
 @Component
 public class ServiceNodeConfigMapper implements NodeConfigMapper {
 
@@ -14,7 +16,8 @@ public class ServiceNodeConfigMapper implements NodeConfigMapper {
 	}
 
 	@Override
-	public NodeDefinition toDomain(NodeConfig config, String downstreamNodeId) {
+	public NodeDefinition toDomain(NodeConfig config, List<String> downstreamNodeIds) {
+		String downstreamNodeId = downstreamNodeIds.isEmpty() ? null : downstreamNodeIds.get(0);
 		int capacity = requirePositive(config.getCapacity(), "Service node " + config.getNodeId() + " must define a positive capacity");
 		int queueLimit = defaultInteger(config.getQueueLimit(), capacity);
 		return new NodeDefinition(

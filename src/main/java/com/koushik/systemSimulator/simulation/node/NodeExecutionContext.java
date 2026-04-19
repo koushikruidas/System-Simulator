@@ -57,6 +57,10 @@ public final class NodeExecutionContext {
 		return runtimeStateStore.getRequestState(requestId);
 	}
 
+	public NodeRuntimeState nodeState(String nodeId) {
+		return runtimeStateStore.getNodeState(nodeId);
+	}
+
 	public SimulationEvent createEvent(long timestamp, EventType eventType, Request request, String sourceNodeId, String targetNodeId) {
 		long sequenceNumber = sequenceNumberGenerator.next();
 		return new SimulationEvent(

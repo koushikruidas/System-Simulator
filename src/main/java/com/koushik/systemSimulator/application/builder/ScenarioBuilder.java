@@ -1,5 +1,6 @@
 package com.koushik.systemSimulator.application.builder;
 
+import com.koushik.systemSimulator.application.model.LbStrategy;
 import com.koushik.systemSimulator.application.model.SimulationCommand;
 
 public interface ScenarioBuilder {
@@ -8,6 +9,9 @@ public interface ScenarioBuilder {
 		return new DefaultScenarioBuilder();
 	}
 
+	ScenarioBuilder addLoadBalancer(String nodeId, LbStrategy strategy, int capacity, int queueLimit, long latency);
+
+	@Deprecated
 	ScenarioBuilder addLoadBalancer(String nodeId, long latency);
 
 	ScenarioBuilder addService(String nodeId, int capacity, int queueLimit, long latency);

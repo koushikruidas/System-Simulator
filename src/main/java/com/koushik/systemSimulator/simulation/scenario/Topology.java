@@ -35,4 +35,11 @@ public final class Topology {
 	public List<LinkDefinition> links() {
 		return links;
 	}
+
+	public List<String> getDownstreams(String nodeId) {
+		return links.stream()
+				.filter(link -> link.sourceNodeId().equals(nodeId))
+				.map(LinkDefinition::targetNodeId)
+				.toList();
+	}
 }

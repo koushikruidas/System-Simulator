@@ -29,4 +29,6 @@ public class NodeRequest {
 
 	@PositiveOrZero
 	private Long latency;
+
+	private ApiLbStrategy strategy;
 }

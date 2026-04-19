@@ -31,7 +31,7 @@ public class SimulationScenarioAdapter {
 			}
 		}
 
-		Map<String, String> downstreamBySource = new LinkedHashMap<>();
+		Map<String, List<String>> downstreamsBySource = new LinkedHashMap<>();
 		List<LinkDefinition> links = new ArrayList<>();
 		for (ConnectionConfig connection : command.getConnections()) {
 			if (!nodeConfigsById.containsKey(connection.getSourceNodeId())) {
@@ -40,9 +40,14 @@ public class SimulationScenarioAdapter {
 			if (!nodeConfigsById.containsKey(connection.getTargetNodeId())) {
 				throw new IllegalArgumentException("Node " + connection.getTargetNodeId() + " does not exist");
 			}
-			if (downstreamBySource.put(connection.getSourceNodeId(), connection.getTargetNodeId()) != null) {
+			NodeConfig sourceNode = nodeConfigsById.get(connection.getSourceNodeId());
+			boolean isLb = sourceNode.getNodeType() == NodeType.LOAD_BALANCER;
+			List<String> existing = downstreamsBySource.computeIfAbsent(
+					connection.getSourceNodeId(), k -> new ArrayList<>());
+			if (!isLb && !existing.isEmpty()) {
 				throw new IllegalArgumentException("Node " + connection.getSourceNodeId() + " already has a downstream connection");
 			}
+			existing.add(connection.getTargetNodeId());
 			links.add(new LinkDefinition(connection.getSourceNodeId(), connection.getTargetNodeId()));
 		}
 
@@ -52,17 +57,17 @@ public class SimulationScenarioAdapter {
 			);
 		}
 
-		validateTopology(nodeConfigsById, downstreamBySource);
+		validateTopology(nodeConfigsById, downstreamsBySource);
 
 		List<NodeDefinition> nodeDefinitions = nodeConfigsById.values().stream()
 				.map(nodeConfig -> nodeConfigMapperRegistry.toDomain(
 						nodeConfig,
-						downstreamBySource.get(nodeConfig.getNodeId())))
+						downstreamsBySource.getOrDefault(nodeConfig.getNodeId(), List.of())))
 				.toList();
 		return new Topology(nodeDefinitions, links);
 	}
 
-	private void validateTopology(Map<String, NodeConfig> nodeConfigsById, Map<String, String> downstreamBySource) {
+	private void validateTopology(Map<String, NodeConfig> nodeConfigsById, Map<String, List<String>> downstreamsBySource) {
 		if (nodeConfigsById.isEmpty()) {
 			throw new IllegalArgumentException("At least one node is required");
 		}
@@ -82,7 +87,8 @@ public class SimulationScenarioAdapter {
 			if (nodeConfig.getNodeType() == NodeType.DATABASE) {
 				continue;
 			}
-			if (!downstreamBySource.containsKey(nodeConfig.getNodeId())) {
+			List<String> downstreams = downstreamsBySource.getOrDefault(nodeConfig.getNodeId(), List.of());
+			if (downstreams.isEmpty()) {
 				throw new IllegalArgumentException("Node " + nodeConfig.getNodeId() + " must define a downstream connection");
 			}
 		}
