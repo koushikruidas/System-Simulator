@@ -1,206 +1,229 @@
-import React from 'react'
+import React, { useId } from 'react'
+import { totalNodeCount, totalConnectionCount } from '../utils/expandTopology.js'
 
-const SIMPLE_EXAMPLE = {
-  nodes: [
-    { id: 'lb',      type: 'LOAD_BALANCER', capacity: 1,  queueLimit: 0,  latency: 1,  strategy: 'ROUND_ROBIN' },
-    { id: 'service', type: 'SERVICE',       capacity: 1,  queueLimit: 1,  latency: 5,  strategy: null },
-    { id: 'db',      type: 'DATABASE',      capacity: 1,  queueLimit: 1,  latency: 10, strategy: null },
-  ],
-  connections: [
-    { sourceNodeId: 'lb', targetNodeId: 'service' },
-    { sourceNodeId: 'service', targetNodeId: 'db' },
-  ],
-  requestCount: 1,
-  entryNodeId: 'lb',
+// ── Presets ────────────────────────────────────────────────────────────────────
+const PRESETS = {
+  simple: {
+    label: 'Simple (1-1-1)',
+    requestCount: 1,
+    layers: [
+      { id: 'p1', type: 'LOAD_BALANCER', count: 1, config: { capacity: 1, queueLimit: 0, latency: 1, strategy: 'ROUND_ROBIN' } },
+      { id: 'p2', type: 'SERVICE',       count: 1, config: { capacity: 1, queueLimit: 1, latency: 5 } },
+      { id: 'p3', type: 'DATABASE',      count: 1, config: { capacity: 1, queueLimit: 1, latency: 10 } },
+    ],
+  },
+  dual: {
+    label: '2-Service LB',
+    requestCount: 6,
+    layers: [
+      { id: 'p1', type: 'LOAD_BALANCER', count: 1, config: { capacity: 4, queueLimit: 0, latency: 0, strategy: 'ROUND_ROBIN' } },
+      { id: 'p2', type: 'SERVICE',       count: 2, config: { capacity: 2, queueLimit: 5, latency: 10 } },
+      { id: 'p3', type: 'DATABASE',      count: 1, config: { capacity: 4, queueLimit: 10, latency: 5 } },
+    ],
+  },
+  scaled: {
+    label: 'Scaled (2-10-2)',
+    requestCount: 20,
+    layers: [
+      { id: 'p1', type: 'LOAD_BALANCER', count: 2,  config: { capacity: 10, queueLimit: 0, latency: 1,  strategy: 'ROUND_ROBIN' } },
+      { id: 'p2', type: 'SERVICE',       count: 10, config: { capacity: 3,  queueLimit: 10, latency: 15 } },
+      { id: 'p3', type: 'DATABASE',      count: 2,  config: { capacity: 10, queueLimit: 20, latency: 8 } },
+    ],
+  },
 }
 
-const COMPLEX_EXAMPLE = {
-  nodes: [
-    { id: 'lb', type: 'LOAD_BALANCER', capacity: 4,  queueLimit: 0,  latency: 0,  strategy: 'ROUND_ROBIN' },
-    { id: 's1', type: 'SERVICE',       capacity: 2,  queueLimit: 5,  latency: 10, strategy: null },
-    { id: 's2', type: 'SERVICE',       capacity: 2,  queueLimit: 5,  latency: 10, strategy: null },
-    { id: 'db', type: 'DATABASE',      capacity: 4,  queueLimit: 10, latency: 5,  strategy: null },
-  ],
-  connections: [
-    { sourceNodeId: 'lb', targetNodeId: 's1' },
-    { sourceNodeId: 'lb', targetNodeId: 's2' },
-    { sourceNodeId: 's1', targetNodeId: 'db' },
-    { sourceNodeId: 's2', targetNodeId: 'db' },
-  ],
-  requestCount: 6,
-  entryNodeId: 'lb',
+// ── Colours per type ───────────────────────────────────────────────────────────
+const TYPE_COLOR = {
+  LOAD_BALANCER: { bar: '#7c3aed', light: '#ede9fe', text: 'text-violet-700', label: 'LB' },
+  SERVICE:       { bar: '#2563eb', light: '#dbeafe', text: 'text-blue-700',   label: 'SVC' },
+  DATABASE:      { bar: '#059669', light: '#d1fae5', text: 'text-emerald-700',label: 'DB' },
 }
-
-const NODE_TYPES = ['LOAD_BALANCER', 'SERVICE', 'DATABASE']
+const TYPES = ['LOAD_BALANCER', 'SERVICE', 'DATABASE']
 const STRATEGIES = ['ROUND_ROBIN', 'LEAST_CONNECTIONS']
 
-function Field({ label, children }) {
+let _uid = 0
+function uid() { return `layer-${++_uid}-${Date.now()}` }
+
+// ── Small helpers ──────────────────────────────────────────────────────────────
+const inputCls = 'w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:border-blue-400 bg-white'
+const selectCls = `${inputCls} cursor-pointer`
+
+function NumInput({ value, min = 0, onChange }) {
   return (
-    <div>
-      <label className="block text-[10px] text-gray-500 font-medium mb-0.5 uppercase tracking-wide">{label}</label>
-      {children}
+    <input
+      type="number" min={min} value={value}
+      onChange={e => onChange(Math.max(min, parseInt(e.target.value) || min))}
+      className={inputCls}
+    />
+  )
+}
+
+function Label({ children }) {
+  return <div className="text-[10px] text-gray-400 font-medium uppercase tracking-wide mb-0.5">{children}</div>
+}
+
+// ── Layer Card ─────────────────────────────────────────────────────────────────
+function LayerCard({ layer, index, total, onChange, onRemove, onDuplicate, onMoveUp, onMoveDown }) {
+  const color = TYPE_COLOR[layer.type] ?? TYPE_COLOR.SERVICE
+
+  function cfg(key, val) {
+    onChange({ ...layer, config: { ...layer.config, [key]: val } })
+  }
+
+  return (
+    <div className="rounded-lg border border-gray-200 overflow-hidden shadow-sm bg-white">
+      {/* Header bar */}
+      <div className="flex items-center gap-2 px-3 py-1.5" style={{ background: color.light, borderBottom: `2px solid ${color.bar}` }}>
+        <span className={`text-[11px] font-bold ${color.text}`}>{color.label}</span>
+
+        <select
+          value={layer.type}
+          onChange={e => onChange({ ...layer, type: e.target.value, config: { ...layer.config, strategy: undefined } })}
+          className="flex-1 text-[11px] font-medium border-0 bg-transparent focus:outline-none cursor-pointer"
+          style={{ color: color.bar }}
+        >
+          {TYPES.map(t => <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>)}
+        </select>
+
+        <div className="flex items-center gap-0.5 ml-auto">
+          <button onClick={() => onMoveUp(index)}   disabled={index === 0}      title="Move up"
+            className="w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-gray-700 disabled:opacity-20 text-xs">↑</button>
+          <button onClick={() => onMoveDown(index)} disabled={index === total - 1} title="Move down"
+            className="w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-gray-700 disabled:opacity-20 text-xs">↓</button>
+          <button onClick={() => onDuplicate(index)} title="Duplicate"
+            className="w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-blue-500 text-xs">⊕</button>
+          <button onClick={() => onRemove(index)} title="Remove"
+            className="w-5 h-5 flex items-center justify-center rounded text-gray-300 hover:text-red-500 text-xs font-bold">✕</button>
+        </div>
+      </div>
+
+      {/* Config body */}
+      <div className="p-2.5 grid grid-cols-2 gap-x-2 gap-y-1.5">
+        <div>
+          <Label>Count</Label>
+          <NumInput min={1} value={layer.count} onChange={v => onChange({ ...layer, count: v })} />
+        </div>
+        <div>
+          <Label>Latency (ms)</Label>
+          <NumInput min={0} value={layer.config.latency ?? 0} onChange={v => cfg('latency', v)} />
+        </div>
+        <div>
+          <Label>Capacity</Label>
+          <NumInput min={1} value={layer.config.capacity ?? 1} onChange={v => cfg('capacity', v)} />
+        </div>
+        <div>
+          <Label>Queue Limit</Label>
+          <NumInput min={0} value={layer.config.queueLimit ?? 0} onChange={v => cfg('queueLimit', v)} />
+        </div>
+        {layer.type === 'LOAD_BALANCER' && (
+          <div className="col-span-2">
+            <Label>Strategy</Label>
+            <select value={layer.config.strategy ?? 'ROUND_ROBIN'} onChange={e => cfg('strategy', e.target.value)} className={selectCls}>
+              {STRATEGIES.map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
+            </select>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
 
-const inputCls = 'w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:border-blue-400 bg-white'
-const selectCls = `${inputCls} cursor-pointer`
+// ── Main ConfigPanel ───────────────────────────────────────────────────────────
+export default function ConfigPanel({ layers, requestCount, onLayersChange, onRequestCountChange, onRun, loading, error }) {
+  const nodeTotal = totalNodeCount(layers)
+  const connTotal = totalConnectionCount(layers)
 
-export default function ConfigPanel({ config, onChange, onRun, loading, error }) {
-  function updateNode(idx, key, value) {
-    const nodes = config.nodes.map((n, i) => i === idx ? { ...n, [key]: value } : n)
-    onChange({ ...config, nodes })
+  function updateLayer(idx, updated) {
+    onLayersChange(layers.map((l, i) => i === idx ? updated : l))
+  }
+  function removeLayer(idx) {
+    onLayersChange(layers.filter((_, i) => i !== idx))
+  }
+  function duplicateLayer(idx) {
+    const copy = { ...layers[idx], id: uid(), config: { ...layers[idx].config } }
+    const next = [...layers]
+    next.splice(idx + 1, 0, copy)
+    onLayersChange(next)
+  }
+  function moveUp(idx) {
+    if (idx === 0) return
+    const next = [...layers]
+    ;[next[idx - 1], next[idx]] = [next[idx], next[idx - 1]]
+    onLayersChange(next)
+  }
+  function moveDown(idx) {
+    if (idx === layers.length - 1) return
+    const next = [...layers]
+    ;[next[idx], next[idx + 1]] = [next[idx + 1], next[idx]]
+    onLayersChange(next)
+  }
+  function addLayer() {
+    onLayersChange([...layers, {
+      id: uid(),
+      type: 'SERVICE',
+      count: 1,
+      config: { capacity: 1, queueLimit: 1, latency: 5 },
+    }])
   }
 
-  function addNode() {
-    const node = { id: `node${config.nodes.length + 1}`, type: 'SERVICE', capacity: 1, queueLimit: 1, latency: 5, strategy: null }
-    onChange({ ...config, nodes: [...config.nodes, node] })
+  function loadPreset(key) {
+    const p = PRESETS[key]
+    onLayersChange(p.layers.map(l => ({ ...l, id: uid(), config: { ...l.config } })))
+    onRequestCountChange(p.requestCount)
   }
-
-  function removeNode(idx) {
-    const removed = config.nodes[idx].id
-    const nodes = config.nodes.filter((_, i) => i !== idx)
-    const connections = config.connections.filter(c => c.sourceNodeId !== removed && c.targetNodeId !== removed)
-    onChange({ ...config, nodes, connections })
-  }
-
-  function addConnection() {
-    if (config.nodes.length < 2) return
-    onChange({
-      ...config,
-      connections: [...config.connections, {
-        sourceNodeId: config.nodes[0].id,
-        targetNodeId: config.nodes[1].id,
-      }],
-    })
-  }
-
-  function updateConnection(idx, key, value) {
-    const connections = config.connections.map((c, i) => i === idx ? { ...c, [key]: value } : c)
-    onChange({ ...config, connections })
-  }
-
-  function removeConnection(idx) {
-    onChange({ ...config, connections: config.connections.filter((_, i) => i !== idx) })
-  }
-
-  const nodeOptions = config.nodes.map(n => (
-    <option key={n.id} value={n.id}>{n.id}</option>
-  ))
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Header */}
-      <div className="px-4 pt-3 pb-2 border-b border-gray-100">
-        <div className="flex gap-2">
-          <button
-            onClick={() => onChange(SIMPLE_EXAMPLE)}
-            className="flex-1 text-[10px] px-2 py-1 rounded border border-gray-200 text-gray-600 hover:bg-gray-50"
-          >Simple</button>
-          <button
-            onClick={() => onChange(COMPLEX_EXAMPLE)}
-            className="flex-1 text-[10px] px-2 py-1 rounded border border-blue-200 text-blue-600 hover:bg-blue-50"
-          >2-Service LB</button>
+
+      {/* Preset buttons */}
+      <div className="px-3 pt-3 pb-2 border-b border-gray-100 space-y-1.5">
+        <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Presets</div>
+        <div className="flex gap-1.5 flex-wrap">
+          {Object.entries(PRESETS).map(([key, p]) => (
+            <button key={key} onClick={() => loadPreset(key)}
+              className="text-[10px] px-2 py-1 rounded border border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition-colors">
+              {p.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Scrollable body */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
-
-        {/* Global settings */}
-        <div className="grid grid-cols-2 gap-2">
-          <Field label="Requests">
-            <input type="number" min="1" max="100" value={config.requestCount}
-              onChange={e => onChange({ ...config, requestCount: Math.max(1, parseInt(e.target.value) || 1) })}
-              className={inputCls} />
-          </Field>
-          <Field label="Entry Node">
-            <select value={config.entryNodeId} onChange={e => onChange({ ...config, entryNodeId: e.target.value })} className={selectCls}>
-              {nodeOptions}
-            </select>
-          </Field>
+      {/* Request count */}
+      <div className="px-3 py-2 border-b border-gray-100 flex items-center gap-3">
+        <div className="flex-1">
+          <Label>Requests</Label>
+          <NumInput min={1} value={requestCount} onChange={onRequestCountChange} />
         </div>
-
-        {/* Nodes */}
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-gray-700">Nodes</span>
-            <button onClick={addNode} className="text-[10px] text-blue-600 hover:text-blue-800 font-medium">+ Add</button>
-          </div>
-          <div className="space-y-2">
-            {config.nodes.map((node, idx) => (
-              <div key={idx} className="border border-gray-100 rounded-lg p-2 bg-white shadow-sm">
-                <div className="flex items-center gap-1 mb-2">
-                  <input
-                    value={node.id}
-                    onChange={e => updateNode(idx, 'id', e.target.value)}
-                    className="flex-1 border-b border-gray-200 text-xs font-medium focus:outline-none focus:border-blue-400 bg-transparent pb-0.5"
-                    placeholder="node-id"
-                  />
-                  <button onClick={() => removeNode(idx)} className="text-gray-300 hover:text-red-400 text-xs ml-1 font-bold">✕</button>
-                </div>
-                <div className="grid grid-cols-2 gap-1.5 text-[10px]">
-                  <Field label="Type">
-                    <select value={node.type} onChange={e => updateNode(idx, 'type', e.target.value)} className={selectCls}>
-                      {NODE_TYPES.map(t => <option key={t} value={t}>{t.replace('_', ' ')}</option>)}
-                    </select>
-                  </Field>
-                  {node.type === 'LOAD_BALANCER' && (
-                    <Field label="Strategy">
-                      <select value={node.strategy ?? 'ROUND_ROBIN'} onChange={e => updateNode(idx, 'strategy', e.target.value)} className={selectCls}>
-                        {STRATEGIES.map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
-                      </select>
-                    </Field>
-                  )}
-                  <Field label="Capacity">
-                    <input type="number" min="1" value={node.capacity}
-                      onChange={e => updateNode(idx, 'capacity', Math.max(1, parseInt(e.target.value) || 1))}
-                      className={inputCls} />
-                  </Field>
-                  <Field label="Queue Limit">
-                    <input type="number" min="0" value={node.queueLimit}
-                      onChange={e => updateNode(idx, 'queueLimit', Math.max(0, parseInt(e.target.value) || 0))}
-                      className={inputCls} />
-                  </Field>
-                  <Field label="Latency (ms)">
-                    <input type="number" min="0" value={node.latency}
-                      onChange={e => updateNode(idx, 'latency', Math.max(0, parseInt(e.target.value) || 0))}
-                      className={inputCls} />
-                  </Field>
-                </div>
-              </div>
-            ))}
-          </div>
+        <div className="text-[10px] text-gray-400 text-right leading-relaxed pt-3">
+          <div>{nodeTotal} nodes</div>
+          <div>{connTotal} connections</div>
         </div>
+      </div>
 
-        {/* Connections */}
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-gray-700">Connections</span>
-            <button onClick={addConnection} className="text-[10px] text-blue-600 hover:text-blue-800 font-medium">+ Add</button>
-          </div>
-          <div className="space-y-1.5">
-            {config.connections.map((conn, idx) => (
-              <div key={idx} className="flex items-center gap-1.5">
-                <select value={conn.sourceNodeId} onChange={e => updateConnection(idx, 'sourceNodeId', e.target.value)} className={`${selectCls} flex-1`}>
-                  {nodeOptions}
-                </select>
-                <span className="text-gray-400 text-xs">→</span>
-                <select value={conn.targetNodeId} onChange={e => updateConnection(idx, 'targetNodeId', e.target.value)} className={`${selectCls} flex-1`}>
-                  {nodeOptions}
-                </select>
-                <button onClick={() => removeConnection(idx)} className="text-gray-300 hover:text-red-400 text-xs font-bold">✕</button>
-              </div>
-            ))}
-            {config.connections.length === 0 && (
-              <p className="text-[10px] text-gray-400 italic">No connections yet.</p>
-            )}
-          </div>
-        </div>
+      {/* Layer list */}
+      <div className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
+        {layers.map((layer, idx) => (
+          <LayerCard
+            key={layer.id}
+            layer={layer}
+            index={idx}
+            total={layers.length}
+            onChange={updated => updateLayer(idx, updated)}
+            onRemove={removeLayer}
+            onDuplicate={duplicateLayer}
+            onMoveUp={moveUp}
+            onMoveDown={moveDown}
+          />
+        ))}
+
+        <button onClick={addLayer}
+          className="w-full py-1.5 rounded-lg border-2 border-dashed border-gray-200 text-xs text-gray-400 hover:border-blue-300 hover:text-blue-500 transition-colors">
+          + Add Layer
+        </button>
       </div>
 
       {/* Footer */}
-      <div className="px-4 pb-4 pt-2 border-t border-gray-100">
+      <div className="px-3 pb-3 pt-2 border-t border-gray-100">
         {error && (
           <div className="mb-2 text-[10px] text-red-600 bg-red-50 border border-red-100 rounded px-2 py-1.5 break-words">
             {error}
@@ -208,9 +231,9 @@ export default function ConfigPanel({ config, onChange, onRun, loading, error })
         )}
         <button
           onClick={onRun}
-          disabled={loading}
+          disabled={loading || layers.length === 0}
           className={`w-full py-2 rounded-lg text-sm font-semibold transition-colors ${
-            loading
+            loading || layers.length === 0
               ? 'bg-blue-300 text-white cursor-not-allowed'
               : 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800'
           }`}

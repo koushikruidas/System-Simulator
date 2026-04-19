@@ -8,43 +8,49 @@ import ReactFlow, {
   MiniMap,
 } from 'reactflow'
 import 'reactflow/dist/style.css'
-import { computeLayout } from '../utils/layout.js'
+import { computeDagreLayout } from '../utils/layout.js'
 
-// ── Node type colours ──────────────────────────────────────────────────────────
 const TYPE_STYLE = {
   LOAD_BALANCER: { bg: '#ede9fe', border: '#7c3aed', badge: '#7c3aed', label: 'LB' },
   SERVICE:       { bg: '#dbeafe', border: '#2563eb', badge: '#2563eb', label: 'SVC' },
   DATABASE:      { bg: '#d1fae5', border: '#059669', badge: '#059669', label: 'DB' },
 }
 
+// Threshold above which edges are hidden to preserve rendering performance
+const MAX_EDGES_RENDERED = 300
+
 function SimNode({ data }) {
   const style = TYPE_STYLE[data.nodeType] || TYPE_STYLE.SERVICE
-  const highlighted = data.inPath
-  const animating = data.animating
+  const { inPath, animating, compact } = data
 
   return (
     <div
-      className={`rounded-xl border-2 p-3 min-w-[110px] text-center shadow-sm transition-all ${animating ? 'node-animating' : ''}`}
+      className={`rounded-lg border-2 text-center shadow-sm transition-all select-none ${animating ? 'node-animating' : ''}`}
       style={{
-        background: highlighted ? '#fef3c7' : style.bg,
-        borderColor: animating ? '#f59e0b' : highlighted ? '#f59e0b' : style.border,
-        transform: animating ? 'scale(1.05)' : 'scale(1)',
+        width: compact ? 80 : 130,
+        background: animating ? '#fef3c7' : inPath ? '#fef9c3' : style.bg,
+        borderColor: animating ? '#f59e0b' : inPath ? '#fbbf24' : style.border,
+        padding: compact ? '4px 6px' : '8px 10px',
+        transform: animating ? 'scale(1.06)' : 'scale(1)',
       }}
     >
       <Handle type="target" position={Position.Left} style={{ background: style.border }} />
 
-      <div
-        className="inline-block px-1.5 py-0.5 rounded text-[10px] text-white font-bold mb-1"
-        style={{ background: style.badge }}
-      >
+      <div className="inline-block px-1 py-0.5 rounded text-[9px] text-white font-bold mb-0.5"
+        style={{ background: style.badge }}>
         {style.label}
       </div>
 
-      <div className="font-semibold text-xs text-gray-800 truncate">{data.label}</div>
-      <div className="text-[10px] text-gray-500">{data.latency}ms</div>
+      <div className="font-semibold text-gray-800 truncate" style={{ fontSize: compact ? 9 : 11 }}>
+        {data.label}
+      </div>
 
-      {data.metrics && (
-        <div className="mt-1.5 text-[10px] flex justify-center gap-2">
+      {!compact && (
+        <div className="text-[9px] text-gray-400">{data.latency}ms</div>
+      )}
+
+      {!compact && data.metrics && (
+        <div className="mt-1 text-[9px] flex justify-center gap-2">
           <span className="text-emerald-600 font-medium">✓{data.metrics.processedRequests}</span>
           {data.metrics.droppedRequests > 0 && (
             <span className="text-red-500 font-medium">✗{data.metrics.droppedRequests}</span>
@@ -52,11 +58,14 @@ function SimNode({ data }) {
         </div>
       )}
 
-      {data.distribution && Object.keys(data.distribution).length > 0 && (
-        <div className="mt-1 text-[10px] text-gray-500 border-t border-gray-200 pt-1">
-          {Object.entries(data.distribution).map(([id, cnt]) => (
-            <div key={id}>{id}: {cnt}req</div>
+      {!compact && data.distribution && Object.keys(data.distribution).length > 0 && (
+        <div className="mt-1 text-[9px] text-gray-500 border-t border-gray-100 pt-1">
+          {Object.entries(data.distribution).slice(0, 4).map(([id, cnt]) => (
+            <div key={id} className="truncate">{id}: {cnt}</div>
           ))}
+          {Object.keys(data.distribution).length > 4 && (
+            <div className="text-gray-400">+{Object.keys(data.distribution).length - 4} more</div>
+          )}
         </div>
       )}
 
@@ -68,89 +77,116 @@ function SimNode({ data }) {
 const nodeTypes = { simNode: SimNode }
 
 function GraphInner({ formConfig, simResult, selectedRequest, animStep }) {
+  const { nodes: configNodes, connections } = formConfig
+  const nodeCount = configNodes.length
+  const compact = nodeCount > 30
+
   const pathSet = useMemo(() => new Set(selectedRequest?.path ?? []), [selectedRequest])
 
   const pathEdges = useMemo(() => {
     if (!selectedRequest?.path) return new Set()
-    const edges = new Set()
+    const s = new Set()
     const p = selectedRequest.path
-    for (let i = 0; i < p.length - 1; i++) edges.add(`${p[i]}-${p[i + 1]}`)
-    return edges
+    for (let i = 0; i < p.length - 1; i++) s.add(`${p[i]}-${p[i + 1]}`)
+    return s
   }, [selectedRequest])
 
-  // LB distribution from results
   const lbDistribution = useMemo(() => {
     if (!simResult) return {}
     const dist = {}
-    const lbIds = new Set(formConfig.nodes.filter(n => n.type === 'LOAD_BALANCER').map(n => n.id))
+    const lbIds = new Set(configNodes.filter(n => n.type === 'LOAD_BALANCER').map(n => n.id))
     for (const req of simResult.requests ?? []) {
       const path = req.path ?? []
       for (let i = 0; i < path.length - 1; i++) {
         if (lbIds.has(path[i])) {
-          const key = path[i]
-          if (!dist[key]) dist[key] = {}
-          const downstream = path[i + 1]
-          dist[key][downstream] = (dist[key][downstream] ?? 0) + 1
+          if (!dist[path[i]]) dist[path[i]] = {}
+          dist[path[i]][path[i + 1]] = (dist[path[i]][path[i + 1]] ?? 0) + 1
         }
       }
     }
     return dist
-  }, [simResult, formConfig.nodes])
+  }, [simResult, configNodes])
 
   const positions = useMemo(
-    () => computeLayout(formConfig.nodes, formConfig.connections, formConfig.entryNodeId),
-    [formConfig.nodes, formConfig.connections, formConfig.entryNodeId]
+    () => computeDagreLayout(configNodes, connections),
+    [configNodes, connections]
   )
 
-  const nodes = useMemo(() =>
-    formConfig.nodes.map((n, idx) => ({
+  const rfNodes = useMemo(() =>
+    configNodes.map((n, idx) => ({
       id: n.id,
       type: 'simNode',
-      position: positions[n.id] ?? { x: idx * 230, y: 100 },
+      position: positions[n.id] ?? { x: idx * 160, y: 100 },
       data: {
         label: n.id,
         nodeType: n.type,
         latency: n.latency,
-        strategy: n.strategy,
+        compact,
         inPath: pathSet.has(n.id),
-        animating: selectedRequest && animStep >= 0 && selectedRequest.path[animStep] === n.id,
+        animating: selectedRequest != null && animStep >= 0 && selectedRequest.path[animStep] === n.id,
         metrics: simResult?.nodeMetrics?.[n.id] ?? null,
         distribution: lbDistribution[n.id] ?? {},
       },
     })),
-    [formConfig.nodes, positions, pathSet, animStep, selectedRequest, simResult, lbDistribution]
+    [configNodes, positions, pathSet, animStep, selectedRequest, simResult, lbDistribution, compact]
   )
 
-  const edges = useMemo(() =>
-    formConfig.connections.map(c => {
-      const edgeId = `${c.sourceNodeId}-${c.targetNodeId}`
-      const inPath = pathEdges.has(edgeId)
+  const tooManyEdges = connections.length > MAX_EDGES_RENDERED
+
+  const rfEdges = useMemo(() => {
+    if (tooManyEdges) {
+      // Only render path edges when there are too many total edges
+      return (selectedRequest?.path
+        ? selectedRequest.path.slice(0, -1).map((src, i) => {
+            const tgt = selectedRequest.path[i + 1]
+            const id = `${src}-${tgt}`
+            return { id, source: src, target: tgt, animated: true, style: { stroke: '#f59e0b', strokeWidth: 2.5 } }
+          })
+        : [])
+    }
+    return connections.map(c => {
+      const id = `${c.sourceNodeId}-${c.targetNodeId}`
+      const inPath = pathEdges.has(id)
       return {
-        id: edgeId,
+        id,
         source: c.sourceNodeId,
         target: c.targetNodeId,
         animated: inPath,
-        style: { stroke: inPath ? '#f59e0b' : '#94a3b8', strokeWidth: inPath ? 2.5 : 1.5 },
+        style: { stroke: inPath ? '#f59e0b' : '#cbd5e1', strokeWidth: inPath ? 2.5 : 1 },
       }
-    }),
-    [formConfig.connections, pathEdges]
-  )
+    })
+  }, [connections, pathEdges, selectedRequest, tooManyEdges])
 
   return (
     <ReactFlow
-      nodes={nodes}
-      edges={edges}
+      nodes={rfNodes}
+      edges={rfEdges}
       nodeTypes={nodeTypes}
       fitView
-      fitViewOptions={{ padding: 0.3 }}
+      fitViewOptions={{ padding: 0.25 }}
+      minZoom={0.05}
+      maxZoom={2}
       nodesDraggable={false}
       nodesConnectable={false}
       elementsSelectable={false}
       proOptions={{ hideAttribution: true }}
     >
-      <Background gap={20} color="#e2e8f0" />
+      <Background gap={24} color="#e2e8f0" />
       <Controls showInteractive={false} />
-      <MiniMap nodeColor={n => TYPE_STYLE[n.data?.nodeType]?.badge ?? '#94a3b8'} zoomable pannable />
+      <MiniMap
+        nodeColor={n => TYPE_STYLE[n.data?.nodeType]?.badge ?? '#94a3b8'}
+        zoomable pannable
+        style={{ width: 120, height: 80 }}
+      />
+      {tooManyEdges && (
+        <div style={{
+          position: 'absolute', bottom: 10, left: '50%', transform: 'translateX(-50%)',
+          background: 'rgba(255,255,255,0.9)', border: '1px solid #e2e8f0',
+          borderRadius: 6, padding: '3px 10px', fontSize: 10, color: '#64748b', zIndex: 5,
+        }}>
+          {connections.length} connections — only path edges shown. Select a request to highlight its route.
+        </div>
+      )}
     </ReactFlow>
   )
 }

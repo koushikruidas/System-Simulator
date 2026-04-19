@@ -129,8 +129,8 @@ final class DefaultScenarioBuilder implements ScenarioBuilder {
 			throw new ScenarioValidationException("At least one node is required");
 		}
 		long loadBalancers = nodesById.values().stream().filter(node -> node.nodeType() == NodeType.LOAD_BALANCER).count();
-		if (loadBalancers != 1) {
-			throw new ScenarioValidationException("Exactly one load balancer is required");
+		if (loadBalancers < 1) {
+			throw new ScenarioValidationException("At least one load balancer is required");
 		}
 		if (nodesById.values().stream().noneMatch(node -> node.nodeType() == NodeType.SERVICE)) {
 			throw new ScenarioValidationException("At least one service node is required");

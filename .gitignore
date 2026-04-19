@@ -35,3 +35,68 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### Node / React / Vite ###
+
+# Dependencies
+/frontend/node_modules/
+/node_modules/
+
+# Build outputs
+/frontend/dist/
+/frontend/build/
+/dist/
+/build/
+
+# Vite cache
+/frontend/.vite/
+/.vite/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+/frontend/npm-debug.log*
+
+# Environment variables
+.env
+.env.*
+/frontend/.env
+/frontend/.env.*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Coverage
+/frontend/coverage/
+/coverage/
+
+# Temporary files
+*.log
+*.tmp
+*.temp
+
+# Lock files (optional - depends on team)
+# Keep ONE of these if you want reproducible builds
+# Remove if you want flexibility
+# /frontend/package-lock.json
+# /frontend/yarn.lock
+
+# ESLint cache
+/frontend/.eslintcache
+
+# Parcel / other bundlers (future-proof)
+.cache/
+.parcel-cache/
+
+# Storybook (if you add later)
+/frontend/storybook-static/
+
+# Cypress / Playwright
+/frontend/cypress/videos/
+/frontend/cypress/screenshots/
+/frontend/playwright-report/
+/frontend/test-results/
+/frontend/test-screenshots

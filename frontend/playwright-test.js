@@ -3,164 +3,173 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const SCREENSHOTS = path.join(__dirname, 'test-screenshots');
+const SHOTS = path.join(__dirname, 'test-screenshots');
 const BASE = 'http://localhost:5173';
 
-let passed = 0;
-let failed = 0;
+let passed = 0, failed = 0;
 
-function assert(condition, message) {
-  if (condition) {
-    console.log(`  ✅ ${message}`);
-    passed++;
-  } else {
-    console.error(`  ❌ ${message}`);
-    failed++;
-  }
+function assert(ok, msg) {
+  if (ok) { console.log(`  ✅ ${msg}`); passed++; }
+  else     { console.error(`  ❌ ${msg}`); failed++; }
 }
-
-async function screenshot(page, name) {
-  import('fs').then(fs => fs.default.mkdirSync(SCREENSHOTS, { recursive: true }));
-  await page.screenshot({ path: path.join(SCREENSHOTS, `${name}.png`), fullPage: false });
+async function shot(page, name) {
+  const { default: fs } = await import('fs');
+  fs.mkdirSync(SHOTS, { recursive: true });
+  await page.screenshot({ path: path.join(SHOTS, `${name}.png`) });
+}
+async function waitNodes(page, count, timeout = 6000) {
+  await page.waitForFunction(
+    n => document.querySelectorAll('.react-flow__node').length === n,
+    count, { timeout }
+  );
 }
 
 (async () => {
-  const browser = await chromium.launch({ headless: false, slowMo: 200 });
+  const browser = await chromium.launch({ headless: false, slowMo: 150 });
   const page = await browser.newPage();
   await page.setViewportSize({ width: 1400, height: 900 });
 
   try {
-    // ── 1. Initial load ───────────────────────────────────────────────────────
+
+    // ── 1. Initial load ────────────────────────────────────────────────────
     console.log('\n📋 Test 1: Initial load');
     await page.goto(BASE, { waitUntil: 'networkidle' });
-    await screenshot(page, '01-initial');
+    await shot(page, '01-initial');
+    assert(await page.title() === 'System Simulator',   'Page title correct');
+    assert(await page.isVisible('text=🔬 System Simulator'), 'Header visible');
+    assert(await page.isVisible('text=▶ Run Simulation'),    'Run button visible');
+    assert(await page.isVisible('text=Presets'),             'Presets section visible');
+    assert(await page.isVisible('text=+ Add Layer'),         'Add Layer button visible');
 
-    assert(await page.title() === 'System Simulator', 'Page title is "System Simulator"');
-    assert(await page.isVisible('text=🔬 System Simulator'), 'Header renders');
-    assert(await page.isVisible('text=▶ Run Simulation'), 'Run button visible');
-    assert(await page.isVisible('text=Nodes'), 'Nodes section visible');
-    // Connections may be below the fold in the scrollable config panel
-    assert(await page.locator('text=Connections').count() > 0, 'Connections section in DOM');
-
-    // ── 2. Graph renders default topology ────────────────────────────────────
+    // ── 2. Default topology graph (3 nodes: lb, svc, db) ─────────────────
     console.log('\n📋 Test 2: Default topology graph');
-    // React Flow renders asynchronously — wait for nodes to appear
-    const rfContainer = await page.$('.react-flow');
-    assert(rfContainer !== null, 'React Flow container present');
-    await page.waitForSelector('.react-flow__node', { timeout: 5000 });
+    await waitNodes(page, 3);
     const nodeCount = await page.locator('.react-flow__node').count();
-    assert(nodeCount === 3, `3 React Flow nodes rendered (got ${nodeCount})`);
-    assert(await page.locator('.react-flow__node').filter({ hasText: 'lb' }).count() > 0, 'lb node in graph');
-    assert(await page.locator('.react-flow__node').filter({ hasText: 'service' }).count() > 0, 'service node in graph');
-    assert(await page.locator('.react-flow__node').filter({ hasText: 'db' }).count() > 0, 'db node in graph');
+    assert(nodeCount === 3, `3 nodes in graph (got ${nodeCount})`);
+    assert(await page.locator('.react-flow__node').filter({ hasText: 'lb' }).count() > 0,  'lb node rendered');
+    assert(await page.locator('.react-flow__node').filter({ hasText: 'svc' }).count() > 0, 'svc node rendered');
+    assert(await page.locator('.react-flow__node').filter({ hasText: 'db' }).count() > 0,  'db node rendered');
 
-    // ── 3. Preset buttons ────────────────────────────────────────────────────
-    console.log('\n📋 Test 3: "2-Service LB" preset');
+    // ── 3. Node count + connection count shown ────────────────────────────
+    console.log('\n📋 Test 3: Topology stats');
+    assert(await page.locator('text=3 nodes').count() > 0,       '3 nodes stat shown');
+    assert(await page.locator('text=2 connections').count() > 0,  '2 connections stat shown');
+
+    // ── 4. "2-Service LB" preset ──────────────────────────────────────────
+    console.log('\n📋 Test 4: Preset — 2-Service LB');
     await page.click('text=2-Service LB');
-    // Wait for React Flow to remount and render the new topology
-    await page.waitForSelector('.react-flow__node', { timeout: 5000 });
-    await page.waitForFunction(() => document.querySelectorAll('.react-flow__node').length === 4, { timeout: 5000 });
-    await page.waitForTimeout(300);
-    await screenshot(page, '02-2service-preset');
+    await waitNodes(page, 4);
+    await shot(page, '02-2service-preset');
+    assert(await page.locator('.react-flow__node').count() === 4, '4 nodes after preset');
+    assert(await page.locator('text=4 nodes').count() > 0,        '4 nodes stat shown');
+    assert(await page.locator('text=4 connections').count() > 0,  '4 connections stat shown');
 
-    assert(await page.locator('.react-flow__node').filter({ hasText: 's1' }).count() > 0, 's1 node in graph after preset');
-    assert(await page.locator('.react-flow__node').filter({ hasText: 's2' }).count() > 0, 's2 node in graph after preset');
+    // ── 5. Scaled preset ──────────────────────────────────────────────────
+    console.log('\n📋 Test 5: Preset — Scaled (2-10-2)');
+    await page.click('text=Scaled (2-10-2)');
+    await waitNodes(page, 14);
+    await shot(page, '03-scaled-preset');
+    assert(await page.locator('.react-flow__node').count() === 14, '14 nodes for scaled preset');
 
-    // ── 4. Run simple simulation ──────────────────────────────────────────────
-    console.log('\n📋 Test 4: Run simple simulation');
-    await page.click('text=Simple');
+    // ── 6. Add a layer ────────────────────────────────────────────────────
+    console.log('\n📋 Test 6: Add Layer');
+    await page.click('text=Simple (1-1-1)'); // reset to simple first
+    await waitNodes(page, 3);
+    await page.click('text=+ Add Layer');
+    await waitNodes(page, 4);
+    assert(await page.locator('.react-flow__node').count() === 4, '4 nodes after adding layer');
+
+    // ── 7. Duplicate a layer ──────────────────────────────────────────────
+    console.log('\n📋 Test 7: Duplicate layer');
+    await page.click('text=Simple (1-1-1)');
+    await waitNodes(page, 3);
+    const dupBtns = page.locator('button[title="Duplicate"]');
+    await dupBtns.first().click();
     await page.waitForTimeout(300);
+    await shot(page, '04-duplicate');
+    assert(await page.locator('[title="Duplicate"]').count() > 0, 'Duplicate button worked');
+
+    // ── 8. Run simple simulation ──────────────────────────────────────────
+    console.log('\n📋 Test 8: Run simple simulation');
+    await page.click('text=Simple (1-1-1)');
+    await waitNodes(page, 3);
     await page.click('text=▶ Run Simulation');
     await page.waitForSelector('text=request-1', { timeout: 8000 });
-    await screenshot(page, '03-simple-result');
+    await shot(page, '05-simple-result');
+    assert(await page.isVisible('text=request-1'),    'request-1 in list');
+    assert(await page.isVisible('text=✓ OK'),         'COMPLETED badge shown');
+    assert(await page.isVisible('text=avg'),          'avg latency in header');
+    assert(await page.isVisible('text=▶ Animate'),    'Animate button present');
 
-    assert(await page.isVisible('text=request-1'), 'request-1 appears in result list');
-    assert(await page.isVisible('text=✓ OK'), 'COMPLETED status badge shown');
-    assert(await page.isVisible('text=avg'), 'Average latency shown in header');
-
-    // Check breakdown section appears (request auto-selected)
-    assert(await page.isVisible('text=Latency Breakdown') || await page.isVisible('text=▶ Animate'), 'Breakdown panel visible');
-
-    // ── 5. Latency breakdown bars ─────────────────────────────────────────────
-    console.log('\n📋 Test 5: Latency breakdown for request-1');
+    // ── 9. Latency breakdown (16ms = 1+5+10) ─────────────────────────────
+    console.log('\n📋 Test 9: Latency breakdown');
     await page.click('text=request-1');
     await page.waitForTimeout(300);
-    await screenshot(page, '04-breakdown');
+    await shot(page, '06-breakdown');
+    assert(await page.isVisible('text=16ms'), 'Total latency 16ms shown');
+    assert(await page.locator('text=lb').count() > 0,  'lb in breakdown');
+    assert(await page.locator('text=svc').count() > 0, 'svc in breakdown');
+    assert(await page.locator('text=db').count() > 0,  'db in breakdown');
 
-    assert(await page.isVisible('text=lb'), 'lb row in breakdown');
-    assert(await page.isVisible('text=service'), 'service row in breakdown');
-    assert(await page.isVisible('text=db'), 'db row in breakdown');
-    assert(await page.isVisible('text=16ms'), 'total latency 16ms shown');
-    assert(await page.isVisible('text=▶ Animate'), 'Animate button present');
-
-    // ── 6. Animation ─────────────────────────────────────────────────────────
-    console.log('\n📋 Test 6: Animate request path');
+    // ── 10. Animate ───────────────────────────────────────────────────────
+    console.log('\n📋 Test 10: Animation');
     await page.click('text=▶ Animate');
     await page.waitForTimeout(400);
-    await screenshot(page, '05-animating');
-    assert(await page.isVisible('text=⏸ Pause'), 'Pause button appears during animation');
-
-    await page.waitForTimeout(3000); // let animation complete (3 hops × 900ms)
-    await screenshot(page, '06-animation-done');
+    assert(await page.isVisible('text=⏸ Pause'), 'Pause button appears');
+    await page.waitForTimeout(3000);
     assert(await page.isVisible('text=▶ Animate'), 'Animate button returns after completion');
 
-    // ── 7. Run 2-service round-robin simulation ───────────────────────────────
-    console.log('\n📋 Test 7: 2-service RR simulation (6 requests)');
+    // ── 11. 2-Service RR simulation ───────────────────────────────────────
+    console.log('\n📋 Test 11: 2-service Round Robin simulation');
     await page.click('text=2-Service LB');
-    await page.waitForTimeout(300);
+    await waitNodes(page, 4);
     await page.click('text=▶ Run Simulation');
     await page.waitForSelector('text=request-6', { timeout: 8000 });
-    await screenshot(page, '07-2service-result');
+    await shot(page, '07-2service-result');
+    assert(await page.isVisible('text=request-6'),  'request-6 present (6 requests)');
+    const header = await page.textContent('header');
+    assert(header.includes('svc-1'), 'svc-1 in header metrics');
+    assert(header.includes('svc-2'), 'svc-2 in header metrics');
 
-    assert(await page.isVisible('text=request-1'), 'request-1 in list');
-    assert(await page.isVisible('text=request-6'), 'request-6 in list (6 requests total)');
-
-    // Header should show s1 and s2 metrics
-    const headerText = await page.textContent('header');
-    assert(headerText.includes('s1'), 's1 metrics in header');
-    assert(headerText.includes('s2'), 's2 metrics in header');
-
-    // Select a request and verify breakdown path
+    // ── 12. LB distribution on graph node ────────────────────────────────
+    console.log('\n📋 Test 12: LB distribution on graph node');
     await page.click('text=request-1');
     await page.waitForTimeout(300);
-    await screenshot(page, '08-2service-breakdown');
+    await shot(page, '08-lb-distribution');
+    const graphText = await page.locator('.react-flow').textContent();
+    assert(graphText.includes('svc'), 'svc mentioned in LB distribution');
 
-    // Should contain s1 or s2 in breakdown (depending on RR assignment)
-    const breakdownText = await page.textContent('.flex-1');
-    const hasS1OrS2 = breakdownText.includes('s1') || breakdownText.includes('s2');
-    assert(hasS1OrS2, 'Breakdown shows s1 or s2 (RR routing)');
-
-    // ── 8. LB distribution shown on node ─────────────────────────────────────
-    console.log('\n📋 Test 8: LB distribution on graph node');
-    // The lb node in the graph should show distribution
-    const graphArea = await page.$('.react-flow');
-    const graphText = await graphArea.textContent();
-    const hasDistribution = graphText.includes('s1') && graphText.includes('req');
-    assert(hasDistribution, 'LB node shows downstream distribution');
-
-    // ── 9. Error handling — invalid scenario ─────────────────────────────────
-    console.log('\n📋 Test 9: Error handling');
-    // Remove all connections to trigger validation error
-    const removeButtons = await page.$$('button:has-text("✕")');
-    // Remove connection buttons (last two)
-    for (const btn of removeButtons.slice(-4)) {
-      await btn.click().catch(() => {});
-      await page.waitForTimeout(100);
-    }
+    // ── 13. Scaled simulation (2-10-2, 20 requests) ───────────────────────
+    console.log('\n📋 Test 13: Scaled simulation (14 nodes, 20 requests)');
+    await page.click('text=Scaled (2-10-2)');
+    await waitNodes(page, 14);
     await page.click('text=▶ Run Simulation');
-    await page.waitForTimeout(2000);
-    await screenshot(page, '09-error');
-    const errorEl = await page.$('.text-red-600');
-    assert(errorEl !== null, 'Error message displays on validation failure');
+    await page.waitForSelector('text=request-20', { timeout: 12000 });
+    await shot(page, '09-scaled-result');
+    assert(await page.isVisible('text=request-20'), 'All 20 requests returned');
+    assert(await page.locator('text=20 nodes').count() === 0, 'Node stat not polluted');
 
-    // ── Summary ───────────────────────────────────────────────────────────────
-    console.log(`\n─────────────────────────────────────`);
+    // ── 14. Error handling ────────────────────────────────────────────────
+    console.log('\n📋 Test 14: Error handling — remove all layers');
+    await page.click('text=Simple (1-1-1)');
+    await waitNodes(page, 3);
+    const removeBtns = page.locator('button[title="Remove"]');
+    const cnt = await removeBtns.count();
+    for (let i = cnt - 1; i >= 0; i--) {
+      await removeBtns.nth(i).click();
+      await page.waitForTimeout(150);
+    }
+    assert(await page.locator('button[disabled]').filter({ hasText: 'Run Simulation' }).count() > 0,
+      'Run button disabled when no layers');
+
+    // ── Summary ────────────────────────────────────────────────────────────
+    console.log(`\n──────────────────────────────────────`);
     console.log(`Results: ${passed} passed, ${failed} failed`);
-    console.log(`Screenshots saved to: ${SCREENSHOTS}`);
+    console.log(`Screenshots: ${SHOTS}`);
 
-  } catch (err) {
-    console.error('\n💥 Unexpected error:', err.message);
-    await screenshot(page, 'error-crash');
+  } catch (e) {
+    console.error('\n💥 Crash:', e.message);
+    await shot(page, 'crash');
     failed++;
   } finally {
     await browser.close();

@@ -74,8 +74,8 @@ public class SimulationScenarioAdapter {
 		long loadBalancers = nodeConfigsById.values().stream()
 				.filter(node -> node.getNodeType() == NodeType.LOAD_BALANCER)
 				.count();
-		if (loadBalancers != 1) {
-			throw new IllegalArgumentException("Exactly one load balancer is required");
+		if (loadBalancers < 1) {
+			throw new IllegalArgumentException("At least one load balancer is required");
 		}
 		if (nodeConfigsById.values().stream().noneMatch(node -> node.getNodeType() == NodeType.SERVICE)) {
 			throw new IllegalArgumentException("At least one service node is required");

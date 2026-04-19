@@ -1,60 +1,39 @@
-const X_GAP = 230
-const Y_GAP = 120
-const OFFSET_X = 60
-const OFFSET_Y = 80
+import dagre from '@dagrejs/dagre'
 
-export function computeLayout(nodes, connections, entryNodeId) {
-  const nodeIds = nodes.map(n => n.id)
+export const NODE_W = 130
+export const NODE_H = 80
 
-  // BFS from entry to assign levels
-  const levels = {}
-  const queue = []
+/**
+ * Computes left-to-right dagre layout positions.
+ * Returns a map of nodeId → { x, y } (top-left corner for React Flow).
+ */
+export function computeDagreLayout(nodes, connections) {
+  const g = new dagre.graphlib.Graph()
+  g.setDefaultEdgeLabel(() => ({}))
+  g.setGraph({
+    rankdir: 'LR',
+    nodesep: 48,    // vertical gap between nodes in same rank
+    ranksep: 110,   // horizontal gap between ranks
+    marginx: 30,
+    marginy: 30,
+  })
 
-  if (entryNodeId && nodeIds.includes(entryNodeId)) {
-    levels[entryNodeId] = 0
-    queue.push(entryNodeId)
-  } else if (nodeIds.length > 0) {
-    levels[nodeIds[0]] = 0
-    queue.push(nodeIds[0])
-  }
+  nodes.forEach(n => g.setNode(n.id, { width: NODE_W, height: NODE_H }))
 
-  while (queue.length > 0) {
-    const current = queue.shift()
-    const downstreams = connections
-      .filter(c => c.sourceNodeId === current)
-      .map(c => c.targetNodeId)
-
-    for (const ds of downstreams) {
-      if (!(ds in levels)) {
-        levels[ds] = levels[current] + 1
-        queue.push(ds)
-      }
+  connections.forEach(c => {
+    if (g.hasNode(c.sourceNodeId) && g.hasNode(c.targetNodeId)) {
+      g.setEdge(c.sourceNodeId, c.targetNodeId)
     }
-  }
-
-  // Assign any unreachable nodes to next available level
-  nodeIds.forEach(id => {
-    if (!(id in levels)) levels[id] = 0
   })
 
-  // Group by level
-  const byLevel = {}
-  nodeIds.forEach(id => {
-    const lvl = levels[id] ?? 0
-    if (!byLevel[lvl]) byLevel[lvl] = []
-    byLevel[lvl].push(id)
-  })
+  dagre.layout(g)
 
-  // Compute positions — vertically centred per level
   const positions = {}
-  Object.entries(byLevel).forEach(([lvl, ids]) => {
-    const count = ids.length
-    ids.forEach((id, idx) => {
-      positions[id] = {
-        x: parseInt(lvl) * X_GAP + OFFSET_X,
-        y: (idx - (count - 1) / 2) * Y_GAP + OFFSET_Y * 2,
-      }
-    })
+  nodes.forEach(n => {
+    const pos = g.node(n.id)
+    positions[n.id] = pos
+      ? { x: pos.x - NODE_W / 2, y: pos.y - NODE_H / 2 }
+      : { x: 0, y: 0 }
   })
 
   return positions
