@@ -1,6 +1,7 @@
 package com.koushik.systemSimulator.api.dto.request;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Positive;
 import lombok.AllArgsConstructor;
@@ -24,4 +25,7 @@ public class SimulationRequest {
 
 	@Positive
 	private int requestCount;
+
+	@NotBlank
+	private String entryNodeId;
 }

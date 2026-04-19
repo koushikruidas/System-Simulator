@@ -30,6 +30,7 @@ class DefaultSimulationRunnerTest {
 				.connect("lb", "service")
 				.connect("service", "db")
 				.withRequestCount(1)
+				.withEntryNode("lb")
 				.build();
 
 		DefaultSimulationRunner runner = new DefaultSimulationRunner(

@@ -17,6 +17,7 @@ final class DefaultScenarioBuilder implements ScenarioBuilder {
 	private final List<ConnectionConfig> connections = new ArrayList<>();
 	private final Map<String, String> downstreamByNodeId = new LinkedHashMap<>();
 	private int requestCount = 1;
+	private String entryNodeId;
 
 	@Override
 	public ScenarioBuilder addLoadBalancer(String nodeId, long latency) {
@@ -56,7 +57,19 @@ final class DefaultScenarioBuilder implements ScenarioBuilder {
 	}
 
 	@Override
+	public ScenarioBuilder withEntryNode(String nodeId) {
+		this.entryNodeId = nodeId;
+		return this;
+	}
+
+	@Override
 	public SimulationCommand build() {
+		if (entryNodeId == null || entryNodeId.isBlank()) {
+			throw new ScenarioValidationException("entryNodeId must be set before calling build()");
+		}
+		if (!nodesById.containsKey(entryNodeId)) {
+			throw new ScenarioValidationException("Entry node '" + entryNodeId + "' does not exist in the topology");
+		}
 		validateTopology();
 		List<NodeConfig> nodeConfigs = nodesById.values().stream()
 				.map(node -> NodeConfig.builder()
@@ -71,6 +84,7 @@ final class DefaultScenarioBuilder implements ScenarioBuilder {
 				.nodes(nodeConfigs)
 				.connections(List.copyOf(connections))
 				.requestCount(requestCount)
+				.entryNodeId(entryNodeId)
 				.build();
 	}
 

@@ -2,7 +2,6 @@ package com.koushik.systemSimulator.application.runner;
 
 import com.koushik.systemSimulator.application.adapter.SimulationScenarioAdapter;
 import com.koushik.systemSimulator.application.factory.SimulationEngineFactory;
-import com.koushik.systemSimulator.application.model.NodeType;
 import com.koushik.systemSimulator.application.model.SimulationCommand;
 import com.koushik.systemSimulator.application.model.SimulationResult;
 import com.koushik.systemSimulator.simulation.engine.SimulationEngine;
@@ -42,11 +41,7 @@ public class DefaultSimulationRunner implements SimulationRunner {
 	}
 
 	private List<SimulationEvent> seedEvents(SimulationCommand command) {
-		String entryNodeId = command.getNodes().stream()
-				.filter(node -> node.getNodeType() == NodeType.LOAD_BALANCER)
-				.findFirst()
-				.orElseThrow(() -> new IllegalArgumentException("Scenario must contain a load balancer"))
-				.getNodeId();
+		String entryNodeId = command.getEntryNodeId();
 
 		return IntStream.range(0, command.getRequestCount())
 				.mapToObj(index -> {

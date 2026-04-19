@@ -19,9 +19,11 @@ class ScenarioBuilderTest {
 				.connect("lb", "service")
 				.connect("service", "db")
 				.withRequestCount(100)
+				.withEntryNode("lb")
 				.build();
 
 		assertEquals(100, command.getRequestCount());
+		assertEquals("lb", command.getEntryNodeId());
 		assertEquals(3, command.getNodes().size());
 		NodeConfig loadBalancer = command.getNodes().stream()
 				.filter(node -> node.getNodeId().equals("lb"))
@@ -65,8 +67,38 @@ class ScenarioBuilderTest {
 						.addService("service", 1, 1, 10)
 						.addDatabase("db", 1, 1, 10)
 						.connect("lb", "service")
+						.withEntryNode("lb")
 						.build());
 
 		assertEquals("Node service must define a downstream connection", exception.getMessage());
+	}
+
+	@Test
+	void rejectsMissingEntryNode() {
+		ScenarioValidationException exception = assertThrows(ScenarioValidationException.class, () ->
+				ScenarioBuilder.create()
+						.addLoadBalancer("lb", 0)
+						.addService("service", 1, 1, 10)
+						.addDatabase("db", 1, 1, 10)
+						.connect("lb", "service")
+						.connect("service", "db")
+						.build());
+
+		assertEquals("entryNodeId must be set before calling build()", exception.getMessage());
+	}
+
+	@Test
+	void rejectsUnknownEntryNode() {
+		ScenarioValidationException exception = assertThrows(ScenarioValidationException.class, () ->
+				ScenarioBuilder.create()
+						.addLoadBalancer("lb", 0)
+						.addService("service", 1, 1, 10)
+						.addDatabase("db", 1, 1, 10)
+						.connect("lb", "service")
+						.connect("service", "db")
+						.withEntryNode("ghost")
+						.build());
+
+		assertEquals("Entry node 'ghost' does not exist in the topology", exception.getMessage());
 	}
 }

@@ -17,6 +17,7 @@ public class SimulationRequestMapper {
 				.nodes(request.getNodes().stream().map(this::toNodeConfig).toList())
 				.connections(request.getConnections().stream().map(this::toConnectionConfig).toList())
 				.requestCount(request.getRequestCount())
+				.entryNodeId(request.getEntryNodeId())
 				.build();
 	}
 

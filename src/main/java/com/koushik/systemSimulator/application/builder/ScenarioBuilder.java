@@ -18,5 +18,7 @@ public interface ScenarioBuilder {
 
 	ScenarioBuilder withRequestCount(int requestCount);
 
+	ScenarioBuilder withEntryNode(String nodeId);
+
 	SimulationCommand build();
 }

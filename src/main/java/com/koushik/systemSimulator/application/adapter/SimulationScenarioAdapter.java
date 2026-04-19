@@ -46,6 +46,12 @@ public class SimulationScenarioAdapter {
 			links.add(new LinkDefinition(connection.getSourceNodeId(), connection.getTargetNodeId()));
 		}
 
+		if (!nodeConfigsById.containsKey(command.getEntryNodeId())) {
+			throw new IllegalArgumentException(
+					"Entry node '" + command.getEntryNodeId() + "' does not exist in the topology"
+			);
+		}
+
 		validateTopology(nodeConfigsById, downstreamBySource);
 
 		List<NodeDefinition> nodeDefinitions = nodeConfigsById.values().stream()

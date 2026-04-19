@@ -19,4 +19,6 @@ public class SimulationCommand {
 	private final List<ConnectionConfig> connections;
 
 	private final int requestCount;
+
+	private final String entryNodeId;
 }
