@@ -5,6 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
 import java.util.Map;
 
 @Data
@@ -18,4 +19,5 @@ public class SimulationResponse {
 	private int failedRequests;
 	private double averageLatency;
 	private Map<String, NodeMetricsResponse> nodeMetrics;
+	private List<RequestTraceResponse> requests;
 }

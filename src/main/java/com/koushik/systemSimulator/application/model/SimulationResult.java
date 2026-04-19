@@ -5,6 +5,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.Singular;
 
+import java.util.List;
 import java.util.Map;
 
 @Getter
@@ -19,4 +20,7 @@ public class SimulationResult {
 
 	@Singular("nodeMetric")
 	private final Map<String, NodeMetrics> nodeMetrics;
+
+	@Singular("requestTrace")
+	private final List<RequestTrace> requestTraces;
 }

@@ -187,6 +187,71 @@ class SimulationControllerIntegrationTest {
 	}
 
 	@Test
+	void responseIncludesPerRequestTrace() throws Exception {
+		String requestJson = """
+				{
+				  "requestCount": 1,
+				  "entryNodeId": "lb",
+				  "nodes": [
+				    {"id": "lb", "type": "LOAD_BALANCER", "strategy": "ROUND_ROBIN", "capacity": 1, "queueLimit": 0, "latency": 1},
+				    {"id": "service", "type": "SERVICE", "capacity": 1, "queueLimit": 1, "latency": 5},
+				    {"id": "db", "type": "DATABASE", "capacity": 1, "queueLimit": 1, "latency": 10}
+				  ],
+				  "connections": [
+				    {"sourceNodeId": "lb", "targetNodeId": "service"},
+				    {"sourceNodeId": "service", "targetNodeId": "db"}
+				  ]
+				}
+				""";
+
+		mockMvc.perform(post("/simulate")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(requestJson))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.requests").isArray())
+				.andExpect(jsonPath("$.requests.length()").value(1))
+				.andExpect(jsonPath("$.requests[0].requestId").value("request-1"))
+				.andExpect(jsonPath("$.requests[0].path[0]").value("lb"))
+				.andExpect(jsonPath("$.requests[0].path[1]").value("service"))
+				.andExpect(jsonPath("$.requests[0].path[2]").value("db"))
+				.andExpect(jsonPath("$.requests[0].status").value("COMPLETED"));
+	}
+
+	@Test
+	void responseIncludesLatencyBreakdown() throws Exception {
+		String requestJson = """
+				{
+				  "requestCount": 1,
+				  "entryNodeId": "lb",
+				  "nodes": [
+				    {"id": "lb", "type": "LOAD_BALANCER", "strategy": "ROUND_ROBIN", "capacity": 1, "queueLimit": 0, "latency": 1},
+				    {"id": "service", "type": "SERVICE", "capacity": 1, "queueLimit": 1, "latency": 5},
+				    {"id": "db", "type": "DATABASE", "capacity": 1, "queueLimit": 1, "latency": 10}
+				  ],
+				  "connections": [
+				    {"sourceNodeId": "lb", "targetNodeId": "service"},
+				    {"sourceNodeId": "service", "targetNodeId": "db"}
+				  ]
+				}
+				""";
+
+		mockMvc.perform(post("/simulate")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(requestJson))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.requests[0].totalLatency").value(16))
+				.andExpect(jsonPath("$.requests[0].breakdown[0].nodeId").value("lb"))
+				.andExpect(jsonPath("$.requests[0].breakdown[0].queueTime").value(0))
+				.andExpect(jsonPath("$.requests[0].breakdown[0].processingTime").value(1))
+				.andExpect(jsonPath("$.requests[0].breakdown[1].nodeId").value("service"))
+				.andExpect(jsonPath("$.requests[0].breakdown[1].queueTime").value(0))
+				.andExpect(jsonPath("$.requests[0].breakdown[1].processingTime").value(5))
+				.andExpect(jsonPath("$.requests[0].breakdown[2].nodeId").value("db"))
+				.andExpect(jsonPath("$.requests[0].breakdown[2].queueTime").value(0))
+				.andExpect(jsonPath("$.requests[0].breakdown[2].processingTime").value(10));
+	}
+
+	@Test
 	void exposesOpenApiDocumentationAndSwaggerUi() throws Exception {
 		mockMvc.perform(get("/v3/api-docs"))
 				.andExpect(status().isOk())
