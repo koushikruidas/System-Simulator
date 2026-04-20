@@ -18,6 +18,8 @@ final class DefaultScenarioBuilder implements ScenarioBuilder {
 	private final List<ConnectionConfig> connections = new ArrayList<>();
 	private final Map<String, List<String>> downstreamsByNodeId = new LinkedHashMap<>();
 	private int requestCount = 1;
+	private Integer arrivalRate;
+	private Integer simulationDuration;
 	private String entryNodeId;
 
 	@Override
@@ -72,6 +74,16 @@ final class DefaultScenarioBuilder implements ScenarioBuilder {
 	}
 
 	@Override
+	public ScenarioBuilder withTimeSeries(int arrivalRate, int simulationDuration) {
+		if (arrivalRate <= 0 || simulationDuration <= 0) {
+			throw new ScenarioValidationException("arrivalRate and simulationDuration must be > 0");
+		}
+		this.arrivalRate = arrivalRate;
+		this.simulationDuration = simulationDuration;
+		return this;
+	}
+
+	@Override
 	public ScenarioBuilder withEntryNode(String nodeId) {
 		this.entryNodeId = nodeId;
 		return this;
@@ -102,6 +114,8 @@ final class DefaultScenarioBuilder implements ScenarioBuilder {
 				.nodes(nodeConfigs)
 				.connections(List.copyOf(connections))
 				.requestCount(requestCount)
+				.arrivalRate(arrivalRate)
+				.simulationDuration(simulationDuration)
 				.entryNodeId(entryNodeId)
 				.build();
 	}

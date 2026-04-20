@@ -11,6 +11,7 @@ import com.koushik.systemSimulator.simulation.model.SimulationEvent;
 import com.koushik.systemSimulator.simulation.scenario.Topology;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.IntStream;
@@ -41,22 +42,37 @@ public class DefaultSimulationRunner implements SimulationRunner {
 	}
 
 	private List<SimulationEvent> seedEvents(SimulationCommand command) {
-		String entryNodeId = command.getEntryNodeId();
+		return command.isTimeBased() ? timeBasedSeeds(command) : batchSeeds(command);
+	}
 
+	private List<SimulationEvent> batchSeeds(SimulationCommand command) {
+		String entryNodeId = command.getEntryNodeId();
 		return IntStream.range(0, command.getRequestCount())
 				.mapToObj(index -> {
 					String requestId = "request-" + (index + 1);
 					Request request = new Request(requestId, "HTTP", 0, Map.of());
 					return new SimulationEvent(
-							requestId + "-seed",
-							0,
-							index,
-							EventType.REQUEST_ARRIVED,
-							request,
-							"client",
-							entryNodeId
-					);
+							requestId + "-seed", 0, index,
+							EventType.REQUEST_ARRIVED, request, "client", entryNodeId);
 				})
 				.toList();
+	}
+
+	private List<SimulationEvent> timeBasedSeeds(SimulationCommand command) {
+		int rate = command.getArrivalRate();
+		int duration = command.getSimulationDuration();
+		String entryNodeId = command.getEntryNodeId();
+		List<SimulationEvent> seeds = new ArrayList<>();
+		int idx = 0;
+		for (int t = 0; t < duration; t++) {
+			for (int r = 0; r < rate; r++) {
+				String requestId = "request-" + (++idx);
+				Request request = new Request(requestId, "HTTP", t, Map.of());
+				seeds.add(new SimulationEvent(
+						requestId + "-seed", t, idx - 1,
+						EventType.REQUEST_ARRIVED, request, "client", entryNodeId));
+			}
+		}
+		return seeds;
 	}
 }

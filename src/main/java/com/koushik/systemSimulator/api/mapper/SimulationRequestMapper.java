@@ -17,7 +17,9 @@ public class SimulationRequestMapper {
 		return SimulationCommand.builder()
 				.nodes(request.getNodes().stream().map(this::toNodeConfig).toList())
 				.connections(request.getConnections().stream().map(this::toConnectionConfig).toList())
-				.requestCount(request.getRequestCount())
+				.requestCount(request.getRequestCount() != null ? request.getRequestCount() : 0)
+				.arrivalRate(request.getArrivalRate())
+				.simulationDuration(request.getSimulationDuration())
 				.entryNodeId(request.getEntryNodeId())
 				.build();
 	}

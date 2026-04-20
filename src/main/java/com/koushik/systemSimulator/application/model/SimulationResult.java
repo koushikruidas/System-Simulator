@@ -24,4 +24,5 @@ public class SimulationResult {
     private final List<FlowGroup> flowGroups;
     private final Map<Long, Long> latencyDistribution;
     private final RequestSamples samples;
+    private final List<TimeSeriesPoint> timeSeries;
 }

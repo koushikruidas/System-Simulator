@@ -1,6 +1,8 @@
 export async function runSimulation(config) {
   const body = {
-    requestCount: config.requestCount,
+    ...(config.arrivalRate != null
+      ? { arrivalRate: config.arrivalRate, simulationDuration: config.simulationDuration }
+      : { requestCount: config.requestCount }),
     entryNodeId: config.entryNodeId,
     nodes: config.nodes.map(n => ({
       id: n.id,

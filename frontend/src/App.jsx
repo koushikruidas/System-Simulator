@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import ConfigPanel from './components/ConfigPanel.jsx'
 import SimulationGraph from './components/SimulationGraph.jsx'
 import FlowPanel from './components/FlowPanel.jsx'
+import TimeSeriesPanel from './components/TimeSeriesPanel.jsx'
 import { runSimulation } from './api/simulate.js'
 import { expandTopology } from './utils/expandTopology.js'
 
@@ -14,6 +15,9 @@ const DEFAULT_LAYERS = [
 export default function App() {
   const [layers, setLayers]             = useState(DEFAULT_LAYERS)
   const [requestCount, setRequestCount] = useState(1)
+  const [timeSeriesMode, setTimeSeriesMode] = useState(false)
+  const [arrivalRate, setArrivalRate]   = useState(10)
+  const [simulationDuration, setSimDuration] = useState(20)
   const [simResult, setSimResult]       = useState(null)
   const [loading, setLoading]           = useState(false)
   const [error, setError]               = useState(null)
@@ -100,7 +104,12 @@ export default function App() {
     setSelectedSampleTrace(null)
     stopAnimation()
     try {
-      const result = await runSimulation({ nodes, connections, entryNodeId, requestCount })
+      const result = await runSimulation({
+        nodes, connections, entryNodeId,
+        ...(timeSeriesMode
+          ? { arrivalRate, simulationDuration }
+          : { requestCount }),
+      })
       setSimResult(result)
     } catch (e) {
       setError(e.message)
@@ -150,6 +159,12 @@ export default function App() {
             requestCount={requestCount}
             onLayersChange={handleLayersChange}
             onRequestCountChange={handleRequestCountChange}
+            timeSeriesMode={timeSeriesMode}
+            onTimeSeriesModeChange={setTimeSeriesMode}
+            arrivalRate={arrivalRate}
+            onArrivalRateChange={setArrivalRate}
+            simulationDuration={simulationDuration}
+            onSimulationDurationChange={setSimDuration}
             onRun={handleRun}
             loading={loading}
             error={error}
@@ -177,17 +192,20 @@ export default function App() {
 
           {simResult && (
             <div className="h-64 flex-shrink-0 overflow-hidden">
-              <FlowPanel
-                simResult={simResult}
-                selectedFlowIdx={selectedFlowIdx}
-                onFlowSelect={handleFlowSelect}
-                selectedSampleTrace={selectedSampleTrace}
-                onSampleSelect={handleSampleSelect}
-                animStep={animStep}
-                isPlaying={isPlaying}
-                onPlayPause={handlePlayPause}
-                onReset={stopAnimation}
-              />
+              {timeSeriesMode && simResult.timeSeries?.length > 0
+                ? <TimeSeriesPanel timeSeries={simResult.timeSeries} nodes={nodes} />
+                : <FlowPanel
+                    simResult={simResult}
+                    selectedFlowIdx={selectedFlowIdx}
+                    onFlowSelect={handleFlowSelect}
+                    selectedSampleTrace={selectedSampleTrace}
+                    onSampleSelect={handleSampleSelect}
+                    animStep={animStep}
+                    isPlaying={isPlaying}
+                    onPlayPause={handlePlayPause}
+                    onReset={stopAnimation}
+                  />
+              }
             </div>
           )}
         </div>

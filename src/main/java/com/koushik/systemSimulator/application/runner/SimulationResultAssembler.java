@@ -10,6 +10,8 @@ import com.koushik.systemSimulator.application.model.RequestSamples;
 import com.koushik.systemSimulator.application.model.RequestTrace;
 import com.koushik.systemSimulator.application.model.SimulationCommand;
 import com.koushik.systemSimulator.application.model.SimulationResult;
+import com.koushik.systemSimulator.application.model.TimeSeriesPoint;
+import com.koushik.systemSimulator.simulation.state.RequestRuntimeState;
 import com.koushik.systemSimulator.simulation.engine.SimulationReport;
 import com.koushik.systemSimulator.simulation.metrics.SimulationMetrics;
 import com.koushik.systemSimulator.simulation.model.EventType;
@@ -89,9 +91,12 @@ public class SimulationResultAssembler {
         List<FlowGroup> flowGroups = buildFlowGroups(traces);
         Map<Long, Long> latencyDistribution = buildLatencyDistribution(traces);
         RequestSamples samples = buildSamples(traces);
+        List<String> nodeIds = command.getNodes().stream().map(NodeConfig::getNodeId).toList();
+        List<TimeSeriesPoint> timeSeries = buildTimeSeries(
+                engineReport.requestStates(), arrivals, completions, latencyByNodeId, nodeIds);
 
         return SimulationResult.builder()
-                .totalRequests(command.getRequestCount())
+                .totalRequests(command.getTotalRequests())
                 .successfulRequests((int) metrics.completedRequests())
                 .failedRequests((int) metrics.droppedRequests())
                 .averageLatency(metrics.averageLatency())
@@ -99,6 +104,7 @@ public class SimulationResultAssembler {
                 .flowGroups(flowGroups)
                 .latencyDistribution(latencyDistribution)
                 .samples(samples)
+                .timeSeries(timeSeries)
                 .build();
     }
 
@@ -193,5 +199,70 @@ public class SimulationResultAssembler {
             }
         }
         return List.copyOf(result);
+    }
+
+    private List<TimeSeriesPoint> buildTimeSeries(
+            List<RequestRuntimeState> states,
+            Map<String, Map<String, Long>> arrivals,
+            Map<String, Map<String, Long>> completions,
+            Map<String, Long> latencyByNodeId,
+            List<String> nodeIds) {
+
+        long maxTime = states.stream()
+                .filter(s -> s.completedAt() != null)
+                .mapToLong(RequestRuntimeState::completedAt)
+                .max().orElse(0);
+        if (maxTime == 0) return List.of();
+
+        long bucketSize = Math.max(1, (maxTime + 1) / 100);
+        int numBuckets = (int) (maxTime / bucketSize) + 1;
+        List<TimeSeriesPoint> series = new ArrayList<>();
+
+        for (int b = 0; b < numBuckets; b++) {
+            long bucketStart = (long) b * bucketSize;
+            long bucketEnd = bucketStart + bucketSize;
+
+            int incoming = (int) states.stream()
+                    .filter(s -> s.request().createdAt() >= bucketStart && s.request().createdAt() < bucketEnd)
+                    .count();
+
+            int processed = (int) states.stream()
+                    .filter(s -> s.status() == RequestStatus.COMPLETED
+                            && s.completedAt() != null
+                            && s.completedAt() >= bucketStart && s.completedAt() < bucketEnd)
+                    .count();
+
+            int dropped = (int) states.stream()
+                    .filter(s -> s.status() == RequestStatus.DROPPED
+                            && s.completedAt() != null
+                            && s.completedAt() >= bucketStart && s.completedAt() < bucketEnd)
+                    .count();
+
+            double avgLatency = states.stream()
+                    .filter(s -> s.status() == RequestStatus.COMPLETED
+                            && s.completedAt() != null
+                            && s.completedAt() >= bucketStart && s.completedAt() < bucketEnd)
+                    .mapToLong(s -> s.completedAt() - s.request().createdAt())
+                    .average().orElse(0);
+
+            Map<String, Integer> queues = new LinkedHashMap<>();
+            for (String nodeId : nodeIds) {
+                long nodeLatency = latencyByNodeId.getOrDefault(nodeId, 0L);
+                int qSize = (int) states.stream().filter(s -> {
+                    Long arrTime = arrivals.getOrDefault(s.request().requestId(), Map.of()).get(nodeId);
+                    if (arrTime == null || arrTime > bucketStart) return false;
+                    Long compTime = completions.getOrDefault(s.request().requestId(), Map.of()).get(nodeId);
+                    if (compTime == null) return true;
+                    return (compTime - nodeLatency) > bucketStart;
+                }).count();
+                queues.put(nodeId, qSize);
+            }
+
+            series.add(TimeSeriesPoint.builder()
+                    .time(b).incoming(incoming).processed(processed).dropped(dropped)
+                    .queues(Map.copyOf(queues)).avgLatency(avgLatency)
+                    .build());
+        }
+        return series;
     }
 }

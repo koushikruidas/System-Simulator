@@ -147,7 +147,12 @@ function LayerCard({ layer, index, total, onChange, onRemove, onDuplicate, onMov
 }
 
 // ── Main ConfigPanel ───────────────────────────────────────────────────────────
-export default function ConfigPanel({ layers, requestCount, onLayersChange, onRequestCountChange, onRun, loading, error }) {
+export default function ConfigPanel({
+  layers, requestCount, onLayersChange, onRequestCountChange,
+  timeSeriesMode, onTimeSeriesModeChange, arrivalRate, onArrivalRateChange,
+  simulationDuration, onSimulationDurationChange,
+  onRun, loading, error,
+}) {
   const nodeTotal = totalNodeCount(layers)
   const connTotal = totalConnectionCount(layers)
 
@@ -188,6 +193,7 @@ export default function ConfigPanel({ layers, requestCount, onLayersChange, onRe
     const p = PRESETS[key]
     onLayersChange(p.layers.map(l => ({ ...l, id: uid(), config: { ...l.config } })))
     onRequestCountChange(p.requestCount)
+    if (onTimeSeriesModeChange) onTimeSeriesModeChange(false)
   }
 
   return (
@@ -206,16 +212,36 @@ export default function ConfigPanel({ layers, requestCount, onLayersChange, onRe
         </div>
       </div>
 
-      {/* Request count */}
-      <div className="px-3 py-2 border-b border-gray-100 flex items-center gap-3">
-        <div className="flex-1">
-          <Label>Requests</Label>
-          <NumInput min={1} value={requestCount} onChange={onRequestCountChange} />
+      {/* Request count / time-series mode */}
+      <div className="px-3 py-2 border-b border-gray-100 space-y-1.5">
+        <div className="flex items-center justify-between">
+          <label className="flex items-center gap-1.5 cursor-pointer select-none">
+            <input type="checkbox" checked={timeSeriesMode} onChange={e => onTimeSeriesModeChange(e.target.checked)}
+              className="w-3 h-3 accent-blue-600" />
+            <span className="text-[10px] text-gray-500 font-medium">Time-Series Mode</span>
+          </label>
+          <div className="text-[10px] text-gray-400 text-right leading-relaxed">
+            <div>{nodeTotal} nodes</div>
+            <div>{connTotal} connections</div>
+          </div>
         </div>
-        <div className="text-[10px] text-gray-400 text-right leading-relaxed pt-3">
-          <div>{nodeTotal} nodes</div>
-          <div>{connTotal} connections</div>
-        </div>
+        {timeSeriesMode ? (
+          <div className="grid grid-cols-2 gap-x-2">
+            <div>
+              <Label>Arrival Rate</Label>
+              <NumInput min={1} value={arrivalRate} onChange={onArrivalRateChange} />
+            </div>
+            <div>
+              <Label>Duration</Label>
+              <NumInput min={1} value={simulationDuration} onChange={onSimulationDurationChange} />
+            </div>
+          </div>
+        ) : (
+          <div>
+            <Label>Requests</Label>
+            <NumInput min={1} value={requestCount} onChange={onRequestCountChange} />
+          </div>
+        )}
       </div>
 
       {/* Layer list */}

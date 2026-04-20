@@ -161,6 +161,58 @@ async function waitNodes(page, count, timeout = 6000) {
     assert(scaledHeader.includes('lb-1'), 'lb-1 metrics in header');
     assert(await page.locator('text=20 nodes').count() === 0, 'Node stat not polluted');
 
+    // ── 15. Time-series mode toggle ───────────────────────────────────────
+    console.log('\n📋 Test 15: Time-series mode toggle shows arrival rate + duration inputs');
+    await page.click('text=Simple (1-1-1)');
+    await waitNodes(page, 3);
+    // Toggle ON
+    await page.click('text=Time-Series Mode');
+    await page.waitForTimeout(200);
+    assert(await page.isVisible('text=Arrival Rate'), 'Arrival Rate input visible after toggle on');
+    assert(await page.isVisible('text=Duration'),     'Duration input visible after toggle on');
+    // Requests field should be hidden
+    assert(await page.locator('text=Requests').count() === 0, 'Requests field hidden in time-series mode');
+    await shot(page, '10-timeseries-toggle-on');
+    // Toggle OFF
+    await page.click('text=Time-Series Mode');
+    await page.waitForTimeout(200);
+    assert(await page.isVisible('text=Requests'),          'Requests field visible after toggle off');
+    assert(await page.locator('text=Arrival Rate').count() === 0, 'Arrival Rate hidden after toggle off');
+
+    // ── 16. Time-series simulation run ────────────────────────────────────
+    console.log('\n📋 Test 16: Time-series simulation shows TimeSeriesPanel charts');
+    await page.click('text=Simple (1-1-1)');
+    await waitNodes(page, 3);
+    // Enable time-series mode
+    await page.click('text=Time-Series Mode');
+    await page.waitForTimeout(200);
+    // Set arrival rate = 3 and duration = 5
+    const arrivalInput = page.locator('input[type="number"]').nth(0);
+    await arrivalInput.fill('3');
+    await page.click('text=▶ Run Simulation');
+    // Wait for charts to appear (Recharts renders SVG)
+    await page.waitForSelector('.recharts-wrapper', { timeout: 10000 });
+    await shot(page, '11-timeseries-result');
+    const chartCount = await page.locator('.recharts-wrapper').count();
+    assert(chartCount === 4, `4 recharts panels rendered (got ${chartCount})`);
+    // Traffic Breakdown (FlowPanel) should NOT be visible
+    assert(await page.locator('text=Traffic Breakdown').count() === 0, 'FlowPanel hidden in time-series mode');
+    // Chart labels should be visible
+    assert(await page.isVisible('text=Requests / Time-Unit'),       'Chart 1 title visible');
+    assert(await page.isVisible('text=Queue Depth per Node'),        'Chart 2 title visible');
+    assert(await page.isVisible('text=Avg Latency (ms)'),            'Chart 3 title visible');
+    assert(await page.isVisible('text=Throughput Ratio'),            'Chart 4 title visible');
+
+    // ── 17. Switching back to batch mode restores FlowPanel ───────────────
+    console.log('\n📋 Test 17: Toggle off time-series mode, re-run restores FlowPanel');
+    await page.click('text=Time-Series Mode');
+    await page.waitForTimeout(200);
+    await page.click('text=▶ Run Simulation');
+    await page.waitForSelector('text=Traffic Breakdown', { timeout: 8000 });
+    await shot(page, '12-batch-after-timeseries');
+    assert(await page.isVisible('text=Traffic Breakdown'), 'FlowPanel restored after switching back to batch mode');
+    assert(await page.locator('.recharts-wrapper').count() === 0, 'TimeSeriesPanel gone after switching back');
+
     // ── 14. Error handling ────────────────────────────────────────────────
     console.log('\n📋 Test 14: Error handling — remove all layers');
     await page.click('text=Simple (1-1-1)');

@@ -7,6 +7,7 @@ import com.koushik.systemSimulator.api.dto.response.NodeMetricsResponse;
 import com.koushik.systemSimulator.api.dto.response.RequestSamplesResponse;
 import com.koushik.systemSimulator.api.dto.response.RequestTraceResponse;
 import com.koushik.systemSimulator.api.dto.response.SimulationResponse;
+import com.koushik.systemSimulator.api.dto.response.TimeSeriesPointResponse;
 import com.koushik.systemSimulator.application.model.RequestTrace;
 import com.koushik.systemSimulator.application.model.SimulationResult;
 import org.springframework.stereotype.Component;
@@ -47,6 +48,14 @@ public class SimulationResponseMapper {
                 .slowest(toTraceResponses(result.getSamples().getSlowest()))
                 .build();
 
+        List<TimeSeriesPointResponse> timeSeries = result.getTimeSeries().stream()
+                .map(p -> TimeSeriesPointResponse.builder()
+                        .time(p.getTime()).incoming(p.getIncoming())
+                        .processed(p.getProcessed()).dropped(p.getDropped())
+                        .queues(p.getQueues()).avgLatency(p.getAvgLatency())
+                        .build())
+                .toList();
+
         return SimulationResponse.builder()
                 .totalRequests(result.getTotalRequests())
                 .successfulRequests(result.getSuccessfulRequests())
@@ -56,6 +65,7 @@ public class SimulationResponseMapper {
                 .flowSummary(flowSummary)
                 .latencyDistribution(result.getLatencyDistribution())
                 .samples(samples)
+                .timeSeries(timeSeries)
                 .build();
     }
 

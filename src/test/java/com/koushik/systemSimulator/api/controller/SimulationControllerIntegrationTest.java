@@ -252,6 +252,67 @@ class SimulationControllerIntegrationTest {
 	}
 
 	@Test
+	void timeBasedMode_simulatesViaHttpEndpointAndReturnsTotalRequests() throws Exception {
+		String requestJson = """
+				{
+				  "arrivalRate": 3,
+				  "simulationDuration": 4,
+				  "entryNodeId": "lb",
+				  "nodes": [
+				    {"id": "lb", "type": "LOAD_BALANCER", "strategy": "ROUND_ROBIN", "capacity": 10, "queueLimit": 0, "latency": 1},
+				    {"id": "svc", "type": "SERVICE", "capacity": 10, "queueLimit": 10, "latency": 5},
+				    {"id": "db",  "type": "DATABASE", "capacity": 10, "queueLimit": 10, "latency": 10}
+				  ],
+				  "connections": [
+				    {"sourceNodeId": "lb",  "targetNodeId": "svc"},
+				    {"sourceNodeId": "svc", "targetNodeId": "db"}
+				  ]
+				}
+				""";
+
+		mockMvc.perform(post("/simulate")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(requestJson))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.totalRequests").value(12))
+				.andExpect(jsonPath("$.successfulRequests").value(12))
+				.andExpect(jsonPath("$.timeSeries").isArray())
+				.andExpect(jsonPath("$.timeSeries.length()").value(org.hamcrest.Matchers.greaterThan(0)));
+	}
+
+	@Test
+	void timeBasedMode_timeSeriesPointsContainExpectedFields() throws Exception {
+		String requestJson = """
+				{
+				  "arrivalRate": 2,
+				  "simulationDuration": 3,
+				  "entryNodeId": "lb",
+				  "nodes": [
+				    {"id": "lb", "type": "LOAD_BALANCER", "strategy": "ROUND_ROBIN", "capacity": 10, "queueLimit": 0, "latency": 1},
+				    {"id": "svc", "type": "SERVICE", "capacity": 10, "queueLimit": 10, "latency": 5},
+				    {"id": "db",  "type": "DATABASE", "capacity": 10, "queueLimit": 10, "latency": 10}
+				  ],
+				  "connections": [
+				    {"sourceNodeId": "lb",  "targetNodeId": "svc"},
+				    {"sourceNodeId": "svc", "targetNodeId": "db"}
+				  ]
+				}
+				""";
+
+		mockMvc.perform(post("/simulate")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(requestJson))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.timeSeries[0].time").exists())
+				.andExpect(jsonPath("$.timeSeries[0].incoming").exists())
+				.andExpect(jsonPath("$.timeSeries[0].processed").exists())
+				.andExpect(jsonPath("$.timeSeries[0].dropped").exists())
+				.andExpect(jsonPath("$.timeSeries[0].avgLatency").exists())
+				.andExpect(jsonPath("$.timeSeries[0].queues").exists())
+				.andExpect(jsonPath("$.timeSeries[0].queues.lb").exists());
+	}
+
+	@Test
 	void exposesOpenApiDocumentationAndSwaggerUi() throws Exception {
 		mockMvc.perform(get("/v3/api-docs"))
 				.andExpect(status().isOk())

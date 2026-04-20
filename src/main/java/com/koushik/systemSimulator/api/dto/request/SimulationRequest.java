@@ -1,9 +1,9 @@
 package com.koushik.systemSimulator.api.dto.request;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
-import jakarta.validation.constraints.Positive;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -23,8 +23,14 @@ public class SimulationRequest {
 	@NotEmpty
 	private List<@Valid ConnectionRequest> connections;
 
-	@Positive
-	private int requestCount;
+	@Min(1)
+	private Integer requestCount;
+
+	@Min(1)
+	private Integer arrivalRate;
+
+	@Min(1)
+	private Integer simulationDuration;
 
 	@NotBlank
 	private String entryNodeId;

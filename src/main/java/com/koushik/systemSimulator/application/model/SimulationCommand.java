@@ -20,5 +20,17 @@ public class SimulationCommand {
 
 	private final int requestCount;
 
+	private final Integer arrivalRate;
+
+	private final Integer simulationDuration;
+
 	private final String entryNodeId;
+
+	public boolean isTimeBased() {
+		return arrivalRate != null && simulationDuration != null;
+	}
+
+	public int getTotalRequests() {
+		return isTimeBased() ? arrivalRate * simulationDuration : requestCount;
+	}
 }

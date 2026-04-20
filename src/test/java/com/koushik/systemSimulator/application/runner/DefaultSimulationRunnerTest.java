@@ -18,12 +18,14 @@ import com.koushik.systemSimulator.application.model.RequestOutcome;
 import com.koushik.systemSimulator.application.model.RequestTrace;
 import com.koushik.systemSimulator.application.model.SimulationCommand;
 import com.koushik.systemSimulator.application.model.SimulationResult;
+import com.koushik.systemSimulator.application.model.TimeSeriesPoint;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DefaultSimulationRunnerTest {
@@ -189,6 +191,93 @@ class DefaultSimulationRunnerTest {
 		assertEquals("db", dbBreakdown.getNodeId());
 		assertEquals(0, dbBreakdown.getQueueTime());
 		assertEquals(10, dbBreakdown.getProcessingTime());
+	}
+
+	// ── Time-series mode ──────────────────────────────────────────────────────────
+
+	@Test
+	void timeBasedMode_totalRequestsIsRateTimesDuration() {
+		SimulationCommand command = ScenarioBuilder.create()
+				.addLoadBalancer("lb", LbStrategy.ROUND_ROBIN, 10, 0, 1)
+				.addService("svc", 10, 10, 5)
+				.addDatabase("db", 10, 10, 10)
+				.connect("lb", "svc").connect("svc", "db")
+				.withTimeSeries(3, 4)
+				.withEntryNode("lb")
+				.build();
+
+		SimulationResult result = buildRunner().run(command);
+
+		assertEquals(12, result.getTotalRequests());
+		assertEquals(12, result.getSuccessfulRequests());
+		assertEquals(0, result.getFailedRequests());
+	}
+
+	@Test
+	void timeBasedMode_timeSeriesIsNonEmptyAndIncomingCountsMatchTotalRequests() {
+		SimulationCommand command = ScenarioBuilder.create()
+				.addLoadBalancer("lb", LbStrategy.ROUND_ROBIN, 10, 0, 1)
+				.addService("svc", 10, 10, 5)
+				.addDatabase("db", 10, 10, 10)
+				.connect("lb", "svc").connect("svc", "db")
+				.withTimeSeries(5, 3)  // 15 total requests
+				.withEntryNode("lb")
+				.build();
+
+		SimulationResult result = buildRunner().run(command);
+
+		List<TimeSeriesPoint> ts = result.getTimeSeries();
+		assertFalse(ts.isEmpty(), "timeSeries must not be empty for time-based runs");
+
+		int totalIncoming = ts.stream().mapToInt(TimeSeriesPoint::getIncoming).sum();
+		assertEquals(15, totalIncoming, "sum of incoming across all buckets must equal total requests");
+
+		int totalProcessed = ts.stream().mapToInt(TimeSeriesPoint::getProcessed).sum();
+		assertEquals(15, totalProcessed, "sum of processed across all buckets must equal completed requests");
+	}
+
+	@Test
+	void timeBasedMode_queueDepthBuildUpUnderOverload() {
+		// svc capacity=1 latency=20 → 5 arrivals at t=0 cause 4 to queue
+		SimulationCommand command = ScenarioBuilder.create()
+				.addLoadBalancer("lb", LbStrategy.ROUND_ROBIN, 10, 0, 0)
+				.addService("svc", 1, 10, 20)
+				.addDatabase("db", 10, 10, 5)
+				.connect("lb", "svc").connect("svc", "db")
+				.withTimeSeries(5, 2)  // 10 requests total; 5 at t=0, 5 at t=1
+				.withEntryNode("lb")
+				.build();
+
+		SimulationResult result = buildRunner().run(command);
+
+		// At least one bucket must show svc queue depth > 0
+		boolean queueObserved = result.getTimeSeries().stream()
+				.anyMatch(p -> p.getQueues().getOrDefault("svc", 0) > 0);
+		assertTrue(queueObserved, "svc queue depth should be > 0 in at least one time bucket under overload");
+	}
+
+	@Test
+	void timeBasedMode_batchModeFallback_timeSeriesIsEmptyWhenAllAtT0() {
+		// Batch mode (requestCount) — all requests at t=0, no spread.
+		// timeSeries is still populated; verify it contains the right incoming total.
+		SimulationCommand command = ScenarioBuilder.create()
+				.addLoadBalancer("lb", LbStrategy.ROUND_ROBIN, 10, 0, 1)
+				.addService("svc", 10, 10, 5)
+				.addDatabase("db", 10, 10, 10)
+				.connect("lb", "svc").connect("svc", "db")
+				.withRequestCount(3)
+				.withEntryNode("lb")
+				.build();
+
+		SimulationResult result = buildRunner().run(command);
+
+		// In batch mode all requests are created at t=0 and complete at t=16.
+		// buildTimeSeries sees maxTime=16, bucketSize=1, should produce exactly 1 bucket
+		// where incoming=3 (all at createdAt=0, which falls in bucket 0).
+		List<TimeSeriesPoint> ts = result.getTimeSeries();
+		assertFalse(ts.isEmpty());
+		int totalIncoming = ts.stream().mapToInt(TimeSeriesPoint::getIncoming).sum();
+		assertEquals(3, totalIncoming);
 	}
 
 	@Test

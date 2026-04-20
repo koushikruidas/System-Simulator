@@ -22,4 +22,5 @@ public class SimulationResponse {
     private List<FlowGroupResponse> flowSummary;
     private Map<Long, Long> latencyDistribution;
     private RequestSamplesResponse samples;
+    private List<TimeSeriesPointResponse> timeSeries;
 }

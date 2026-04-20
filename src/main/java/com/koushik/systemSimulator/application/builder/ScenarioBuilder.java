@@ -25,6 +25,8 @@ public interface ScenarioBuilder {
 
 	ScenarioBuilder withRequestCount(int requestCount);
 
+	ScenarioBuilder withTimeSeries(int arrivalRate, int simulationDuration);
+
 	ScenarioBuilder withEntryNode(String nodeId);
 
 	SimulationCommand build();
