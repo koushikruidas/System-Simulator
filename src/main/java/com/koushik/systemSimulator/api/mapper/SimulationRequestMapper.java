@@ -33,6 +33,8 @@ public class SimulationRequestMapper {
 				.queueLimit(request.getQueueLimit())
 				.latency(request.getLatency())
 				.strategy(strategy)
+				.hitRate(request.getHitRate())
+				.hitLatency(request.getHitLatency())
 				.build();
 	}
 

@@ -94,46 +94,55 @@ async function waitNodes(page, count, timeout = 6000) {
     await page.click('text=Simple (1-1-1)');
     await waitNodes(page, 3);
     await page.click('text=▶ Run Simulation');
-    await page.waitForSelector('text=request-1', { timeout: 8000 });
+    await page.waitForSelector('text=Traffic Breakdown', { timeout: 8000 });
     await shot(page, '05-simple-result');
-    assert(await page.isVisible('text=request-1'),    'request-1 in list');
-    assert(await page.isVisible('text=✓ OK'),         'COMPLETED badge shown');
-    assert(await page.isVisible('text=avg'),          'avg latency in header');
-    assert(await page.isVisible('text=▶ Animate'),    'Animate button present');
+    assert(await page.isVisible('text=Traffic Breakdown'), 'Traffic Breakdown panel visible');
+    assert(await page.isVisible('text=✓ OK'),              'COMPLETED flow badge shown');
+    assert(await page.isVisible('text=avg'),               'avg latency in header');
+    assert(await page.locator('text=lb').count() > 0,      'lb flow path chip shown');
 
-    // ── 9. Latency breakdown (16ms = 1+5+10) ─────────────────────────────
+    // ── 9. Latency breakdown (collapsible card) ───────────────────────────
     console.log('\n📋 Test 9: Latency breakdown');
-    await page.click('text=request-1');
-    await page.waitForTimeout(300);
+    // The LatencyBreakdownCard shows "Latency Breakdown" label with a thin bar
+    await page.locator('text=Latency Breakdown').waitFor({ timeout: 5000 });
     await shot(page, '06-breakdown');
-    assert(await page.isVisible('text=16ms'), 'Total latency 16ms shown');
+    assert(await page.isVisible('text=Latency Breakdown'), 'Latency Breakdown card visible');
+    // Collapsed by default — click to expand
+    await page.click('text=Latency Breakdown');
+    await page.waitForTimeout(200);
     assert(await page.locator('text=lb').count() > 0,  'lb in breakdown');
     assert(await page.locator('text=svc').count() > 0, 'svc in breakdown');
     assert(await page.locator('text=db').count() > 0,  'db in breakdown');
+    // Sample row for request-1 should appear in Samples section
+    assert(await page.isVisible('text=request-1'), 'request-1 in samples');
 
     // ── 10. Animate ───────────────────────────────────────────────────────
     console.log('\n📋 Test 10: Animation');
-    await page.click('text=▶ Animate');
+    // Click sample row to select it, then hit the ▶ button
+    await page.click('text=request-1');
+    await page.waitForTimeout(300);
+    await page.locator('button:has-text("▶")').last().click();
     await page.waitForTimeout(400);
-    assert(await page.isVisible('text=⏸ Pause'), 'Pause button appears');
+    assert(await page.locator('button:has-text("⏸")').count() > 0, 'Pause button appears');
     await page.waitForTimeout(3000);
-    assert(await page.isVisible('text=▶ Animate'), 'Animate button returns after completion');
+    assert(await page.locator('button:has-text("▶")').count() > 0, 'Play button returns after completion');
 
     // ── 11. 2-Service RR simulation ───────────────────────────────────────
     console.log('\n📋 Test 11: 2-service Round Robin simulation');
     await page.click('text=2-Service LB');
     await waitNodes(page, 4);
     await page.click('text=▶ Run Simulation');
-    await page.waitForSelector('text=request-6', { timeout: 8000 });
+    await page.waitForSelector('text=Traffic Breakdown', { timeout: 8000 });
     await shot(page, '07-2service-result');
-    assert(await page.isVisible('text=request-6'),  'request-6 present (6 requests)');
+    // Two flow groups: lb→svc-1→db and lb→svc-2→db
+    const flowGroupsText = await page.locator('text=svc-1').count();
+    assert(flowGroupsText > 0, 'svc-1 flow group shown');
     const header = await page.textContent('header');
     assert(header.includes('svc-1'), 'svc-1 in header metrics');
     assert(header.includes('svc-2'), 'svc-2 in header metrics');
 
     // ── 12. LB distribution on graph node ────────────────────────────────
     console.log('\n📋 Test 12: LB distribution on graph node');
-    await page.click('text=request-1');
     await page.waitForTimeout(300);
     await shot(page, '08-lb-distribution');
     const graphText = await page.locator('.react-flow').textContent();
@@ -144,9 +153,12 @@ async function waitNodes(page, count, timeout = 6000) {
     await page.click('text=Scaled (2-10-2)');
     await waitNodes(page, 14);
     await page.click('text=▶ Run Simulation');
-    await page.waitForSelector('text=request-20', { timeout: 12000 });
+    await page.waitForSelector('text=Traffic Breakdown', { timeout: 12000 });
     await shot(page, '09-scaled-result');
-    assert(await page.isVisible('text=request-20'), 'All 20 requests returned');
+    // Simulation completed — check Traffic Breakdown panel and header metrics
+    assert(await page.isVisible('text=Traffic Breakdown'), 'Traffic Breakdown panel shown');
+    const scaledHeader = await page.textContent('header');
+    assert(scaledHeader.includes('lb-1'), 'lb-1 metrics in header');
     assert(await page.locator('text=20 nodes').count() === 0, 'Node stat not polluted');
 
     // ── 14. Error handling ────────────────────────────────────────────────

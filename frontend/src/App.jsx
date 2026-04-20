@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import ConfigPanel from './components/ConfigPanel.jsx'
 import SimulationGraph from './components/SimulationGraph.jsx'
-import RequestPanel from './components/RequestPanel.jsx'
+import FlowPanel from './components/FlowPanel.jsx'
 import { runSimulation } from './api/simulate.js'
 import { expandTopology } from './utils/expandTopology.js'
 
@@ -12,34 +12,32 @@ const DEFAULT_LAYERS = [
 ]
 
 export default function App() {
-  const [layers, setLayers]           = useState(DEFAULT_LAYERS)
+  const [layers, setLayers]             = useState(DEFAULT_LAYERS)
   const [requestCount, setRequestCount] = useState(1)
-  const [simResult, setSimResult]     = useState(null)
-  const [loading, setLoading]         = useState(false)
-  const [error, setError]             = useState(null)
+  const [simResult, setSimResult]       = useState(null)
+  const [loading, setLoading]           = useState(false)
+  const [error, setError]               = useState(null)
 
-  const [selectedId, setSelectedId]   = useState(null)
-  const [animStep, setAnimStep]       = useState(-1)
-  const [isPlaying, setIsPlaying]     = useState(false)
+  const [selectedFlowIdx, setSelectedFlowIdx]       = useState(0)
+  const [selectedSampleTrace, setSelectedSampleTrace] = useState(null)
+  const [animStep, setAnimStep]         = useState(-1)
+  const [isPlaying, setIsPlaying]       = useState(false)
 
   const intervalRef = useRef(null)
 
-  // Derive flat topology from layers — memoized so it's stable across renders
   const { nodes, connections, entryNodeId } = useMemo(
     () => expandTopology(layers),
     [layers]
   )
 
-  // formConfig shape that SimulationGraph and the API both consume
   const formConfig = useMemo(
     () => ({ nodes, connections, entryNodeId }),
     [nodes, connections, entryNodeId]
   )
 
-  const selectedRequest = simResult?.requests?.find(r => r.requestId === selectedId)
-  const pathLength = selectedRequest?.path?.length ?? 0
+  const selectedPath = selectedSampleTrace?.path ?? simResult?.flowSummary?.[selectedFlowIdx]?.path ?? null
+  const pathLength = selectedPath?.length ?? 0
 
-  // Animation loop
   useEffect(() => {
     if (isPlaying) {
       intervalRef.current = setInterval(() => {
@@ -59,12 +57,16 @@ export default function App() {
     setAnimStep(-1)
   }, [])
 
-  const handleSelect = useCallback((reqId) => {
-    clearInterval(intervalRef.current)
-    setIsPlaying(false)
-    setAnimStep(-1)
-    setSelectedId(reqId)
-  }, [])
+  const handleFlowSelect = useCallback((idx) => {
+    stopAnimation()
+    setSelectedFlowIdx(idx)
+    setSelectedSampleTrace(null)
+  }, [stopAnimation])
+
+  const handleSampleSelect = useCallback((trace) => {
+    stopAnimation()
+    setSelectedSampleTrace(prev => prev?.requestId === trace.requestId ? null : trace)
+  }, [stopAnimation])
 
   const handlePlayPause = useCallback(() => {
     if (isPlaying) {
@@ -79,7 +81,8 @@ export default function App() {
   const handleLayersChange = useCallback((newLayers) => {
     setLayers(newLayers)
     setSimResult(null)
-    setSelectedId(null)
+    setSelectedFlowIdx(0)
+    setSelectedSampleTrace(null)
     stopAnimation()
     setError(null)
   }, [stopAnimation])
@@ -93,12 +96,12 @@ export default function App() {
     setLoading(true)
     setError(null)
     setSimResult(null)
-    setSelectedId(null)
+    setSelectedFlowIdx(0)
+    setSelectedSampleTrace(null)
     stopAnimation()
     try {
       const result = await runSimulation({ nodes, connections, entryNodeId, requestCount })
       setSimResult(result)
-      if (result.requests?.length > 0) setSelectedId(result.requests[0].requestId)
     } catch (e) {
       setError(e.message)
     } finally {
@@ -106,7 +109,6 @@ export default function App() {
     }
   }
 
-  // Graph key: only remount React Flow when topology structure changes
   const graphKey = useMemo(
     () => nodes.map(n => n.id).join(','),
     [nodes]
@@ -154,7 +156,7 @@ export default function App() {
           />
         </aside>
 
-        {/* Graph + Request panel */}
+        {/* Graph + Flow panel */}
         <div className="flex-1 flex flex-col overflow-hidden">
 
           <div className="flex-1 overflow-hidden relative" style={{ minHeight: 0 }}>
@@ -167,7 +169,7 @@ export default function App() {
                 key={graphKey}
                 formConfig={formConfig}
                 simResult={simResult}
-                selectedRequest={selectedRequest ?? null}
+                selectedPath={selectedPath}
                 animStep={animStep}
               />
             )}
@@ -175,10 +177,12 @@ export default function App() {
 
           {simResult && (
             <div className="h-64 flex-shrink-0 overflow-hidden">
-              <RequestPanel
+              <FlowPanel
                 simResult={simResult}
-                selectedId={selectedId}
-                onSelect={handleSelect}
+                selectedFlowIdx={selectedFlowIdx}
+                onFlowSelect={handleFlowSelect}
+                selectedSampleTrace={selectedSampleTrace}
+                onSampleSelect={handleSampleSelect}
                 animStep={animStep}
                 isPlaying={isPlaying}
                 onPlayPause={handlePlayPause}

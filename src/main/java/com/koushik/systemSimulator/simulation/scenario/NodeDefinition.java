@@ -10,7 +10,9 @@ public record NodeDefinition(
 		int capacity,
 		int queueLimit,
 		long processingLatency,
-		String downstreamNodeId
+		String downstreamNodeId,
+		double hitRate,
+		long hitLatency
 ) {
 
 	public NodeDefinition {
@@ -25,5 +27,10 @@ public record NodeDefinition(
 		if (processingLatency < 0) {
 			throw new IllegalArgumentException("processingLatency must be >= 0");
 		}
+	}
+
+	public NodeDefinition(String nodeId, NodeType nodeType, int capacity, int queueLimit,
+						  long processingLatency, String downstreamNodeId) {
+		this(nodeId, nodeType, capacity, queueLimit, processingLatency, downstreamNodeId, 0.0, 0L);
 	}
 }

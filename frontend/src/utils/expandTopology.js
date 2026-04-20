@@ -2,6 +2,7 @@ const TYPE_PREFIX = {
   LOAD_BALANCER: 'lb',
   SERVICE: 'svc',
   DATABASE: 'db',
+  CACHE: 'cache',
 }
 
 /**
@@ -43,6 +44,8 @@ export function expandTopology(layers) {
         strategy:   layer.type === 'LOAD_BALANCER'
           ? (layer.config?.strategy ?? 'ROUND_ROBIN')
           : null,
+        hitRate:    layer.type === 'CACHE' ? (layer.config?.hitRate ?? 0.5) : undefined,
+        hitLatency: layer.type === 'CACHE' ? (layer.config?.hitLatency ?? 1) : undefined,
       }
     })
   })

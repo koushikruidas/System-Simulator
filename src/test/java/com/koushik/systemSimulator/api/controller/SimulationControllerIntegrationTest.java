@@ -208,13 +208,13 @@ class SimulationControllerIntegrationTest {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(requestJson))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.requests").isArray())
-				.andExpect(jsonPath("$.requests.length()").value(1))
-				.andExpect(jsonPath("$.requests[0].requestId").value("request-1"))
-				.andExpect(jsonPath("$.requests[0].path[0]").value("lb"))
-				.andExpect(jsonPath("$.requests[0].path[1]").value("service"))
-				.andExpect(jsonPath("$.requests[0].path[2]").value("db"))
-				.andExpect(jsonPath("$.requests[0].status").value("COMPLETED"));
+				.andExpect(jsonPath("$.samples.first").isArray())
+				.andExpect(jsonPath("$.samples.first.length()").value(1))
+				.andExpect(jsonPath("$.samples.first[0].requestId").value("request-1"))
+				.andExpect(jsonPath("$.samples.first[0].path[0]").value("lb"))
+				.andExpect(jsonPath("$.samples.first[0].path[1]").value("service"))
+				.andExpect(jsonPath("$.samples.first[0].path[2]").value("db"))
+				.andExpect(jsonPath("$.samples.first[0].status").value("COMPLETED"));
 	}
 
 	@Test
@@ -239,16 +239,16 @@ class SimulationControllerIntegrationTest {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(requestJson))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.requests[0].totalLatency").value(16))
-				.andExpect(jsonPath("$.requests[0].breakdown[0].nodeId").value("lb"))
-				.andExpect(jsonPath("$.requests[0].breakdown[0].queueTime").value(0))
-				.andExpect(jsonPath("$.requests[0].breakdown[0].processingTime").value(1))
-				.andExpect(jsonPath("$.requests[0].breakdown[1].nodeId").value("service"))
-				.andExpect(jsonPath("$.requests[0].breakdown[1].queueTime").value(0))
-				.andExpect(jsonPath("$.requests[0].breakdown[1].processingTime").value(5))
-				.andExpect(jsonPath("$.requests[0].breakdown[2].nodeId").value("db"))
-				.andExpect(jsonPath("$.requests[0].breakdown[2].queueTime").value(0))
-				.andExpect(jsonPath("$.requests[0].breakdown[2].processingTime").value(10));
+				.andExpect(jsonPath("$.samples.first[0].totalLatency").value(16))
+				.andExpect(jsonPath("$.samples.first[0].breakdown[0].nodeId").value("lb"))
+				.andExpect(jsonPath("$.samples.first[0].breakdown[0].queueTime").value(0))
+				.andExpect(jsonPath("$.samples.first[0].breakdown[0].processingTime").value(1))
+				.andExpect(jsonPath("$.samples.first[0].breakdown[1].nodeId").value("service"))
+				.andExpect(jsonPath("$.samples.first[0].breakdown[1].queueTime").value(0))
+				.andExpect(jsonPath("$.samples.first[0].breakdown[1].processingTime").value(5))
+				.andExpect(jsonPath("$.samples.first[0].breakdown[2].nodeId").value("db"))
+				.andExpect(jsonPath("$.samples.first[0].breakdown[2].queueTime").value(0))
+				.andExpect(jsonPath("$.samples.first[0].breakdown[2].processingTime").value(10));
 	}
 
 	@Test

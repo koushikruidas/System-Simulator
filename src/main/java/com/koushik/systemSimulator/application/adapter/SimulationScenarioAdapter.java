@@ -77,14 +77,17 @@ public class SimulationScenarioAdapter {
 		if (loadBalancers < 1) {
 			throw new IllegalArgumentException("At least one load balancer is required");
 		}
-		if (nodeConfigsById.values().stream().noneMatch(node -> node.getNodeType() == NodeType.SERVICE)) {
-			throw new IllegalArgumentException("At least one service node is required");
+		boolean hasServiceOrCache = nodeConfigsById.values().stream()
+				.anyMatch(node -> node.getNodeType() == NodeType.SERVICE || node.getNodeType() == NodeType.CACHE);
+		if (!hasServiceOrCache) {
+			throw new IllegalArgumentException("At least one service or cache node is required");
 		}
 		if (nodeConfigsById.values().stream().noneMatch(node -> node.getNodeType() == NodeType.DATABASE)) {
 			throw new IllegalArgumentException("At least one database node is required");
 		}
 		for (NodeConfig nodeConfig : nodeConfigsById.values()) {
-			if (nodeConfig.getNodeType() == NodeType.DATABASE) {
+			if (nodeConfig.getNodeType() == NodeType.DATABASE
+					|| nodeConfig.getNodeType() == NodeType.CACHE) {
 				continue;
 			}
 			List<String> downstreams = downstreamsBySource.getOrDefault(nodeConfig.getNodeId(), List.of());

@@ -42,6 +42,12 @@ final class DefaultScenarioBuilder implements ScenarioBuilder {
 	}
 
 	@Override
+	public ScenarioBuilder addCache(String nodeId, int capacity, int queueLimit,
+									double hitRate, long hitLatency, long missLatency) {
+		return addNode(new PendingNodeConfig(nodeId, NodeType.CACHE, capacity, queueLimit, missLatency, null, hitRate, hitLatency));
+	}
+
+	@Override
 	public ScenarioBuilder connect(String sourceNodeId, String targetNodeId) {
 		requireNodeExists(sourceNodeId);
 		requireNodeExists(targetNodeId);
@@ -88,6 +94,8 @@ final class DefaultScenarioBuilder implements ScenarioBuilder {
 						.queueLimit(node.queueLimit())
 						.latency(node.latency())
 						.strategy(node.strategy())
+						.hitRate(node.hitRate())
+						.hitLatency(node.hitLatency())
 						.build())
 				.toList();
 		return SimulationCommand.builder()
@@ -122,6 +130,9 @@ final class DefaultScenarioBuilder implements ScenarioBuilder {
 		if (sourceType == NodeType.SERVICE && targetType != NodeType.DATABASE) {
 			throw new ScenarioValidationException("Service node " + sourceNodeId + " must connect to a database node");
 		}
+		if (sourceType == NodeType.CACHE && targetType != NodeType.DATABASE) {
+			throw new ScenarioValidationException("Cache node " + sourceNodeId + " must connect to a database node");
+		}
 	}
 
 	private void validateTopology() {
@@ -132,8 +143,10 @@ final class DefaultScenarioBuilder implements ScenarioBuilder {
 		if (loadBalancers < 1) {
 			throw new ScenarioValidationException("At least one load balancer is required");
 		}
-		if (nodesById.values().stream().noneMatch(node -> node.nodeType() == NodeType.SERVICE)) {
-			throw new ScenarioValidationException("At least one service node is required");
+		boolean hasServiceOrCache = nodesById.values().stream()
+				.anyMatch(node -> node.nodeType() == NodeType.SERVICE || node.nodeType() == NodeType.CACHE);
+		if (!hasServiceOrCache) {
+			throw new ScenarioValidationException("At least one service or cache node is required");
 		}
 		if (nodesById.values().stream().noneMatch(node -> node.nodeType() == NodeType.DATABASE)) {
 			throw new ScenarioValidationException("At least one database node is required");
@@ -142,7 +155,7 @@ final class DefaultScenarioBuilder implements ScenarioBuilder {
 			throw new ScenarioValidationException("At least one connection is required");
 		}
 		for (PendingNodeConfig node : nodesById.values()) {
-			if (node.nodeType() == NodeType.DATABASE) {
+			if (node.nodeType() == NodeType.DATABASE || node.nodeType() == NodeType.CACHE) {
 				continue;
 			}
 			if (downstreamsByNodeId.getOrDefault(node.nodeId(), List.of()).isEmpty()) {
@@ -157,8 +170,15 @@ final class DefaultScenarioBuilder implements ScenarioBuilder {
 			Integer capacity,
 			Integer queueLimit,
 			Long latency,
-			LbStrategy strategy
+			LbStrategy strategy,
+			Double hitRate,
+			Long hitLatency
 	) {
+
+		private PendingNodeConfig(String nodeId, NodeType nodeType, Integer capacity,
+								  Integer queueLimit, Long latency, LbStrategy strategy) {
+			this(nodeId, nodeType, capacity, queueLimit, latency, strategy, null, null);
+		}
 
 		private PendingNodeConfig {
 			Objects.requireNonNull(nodeId, "nodeId must not be null");

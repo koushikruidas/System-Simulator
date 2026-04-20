@@ -14,6 +14,7 @@ const TYPE_STYLE = {
   LOAD_BALANCER: { bg: '#ede9fe', border: '#7c3aed', badge: '#7c3aed', label: 'LB' },
   SERVICE:       { bg: '#dbeafe', border: '#2563eb', badge: '#2563eb', label: 'SVC' },
   DATABASE:      { bg: '#d1fae5', border: '#059669', badge: '#059669', label: 'DB' },
+  CACHE:         { bg: '#fef3c7', border: '#d97706', badge: '#d97706', label: 'CACHE' },
 }
 
 // Threshold above which edges are hidden to preserve rendering performance
@@ -76,31 +77,30 @@ function SimNode({ data }) {
 
 const nodeTypes = { simNode: SimNode }
 
-function GraphInner({ formConfig, simResult, selectedRequest, animStep }) {
+function GraphInner({ formConfig, simResult, selectedPath, animStep }) {
   const { nodes: configNodes, connections } = formConfig
   const nodeCount = configNodes.length
   const compact = nodeCount > 30
 
-  const pathSet = useMemo(() => new Set(selectedRequest?.path ?? []), [selectedRequest])
+  const pathSet = useMemo(() => new Set(selectedPath ?? []), [selectedPath])
 
   const pathEdges = useMemo(() => {
-    if (!selectedRequest?.path) return new Set()
+    if (!selectedPath) return new Set()
     const s = new Set()
-    const p = selectedRequest.path
-    for (let i = 0; i < p.length - 1; i++) s.add(`${p[i]}-${p[i + 1]}`)
+    for (let i = 0; i < selectedPath.length - 1; i++) s.add(`${selectedPath[i]}-${selectedPath[i + 1]}`)
     return s
-  }, [selectedRequest])
+  }, [selectedPath])
 
   const lbDistribution = useMemo(() => {
     if (!simResult) return {}
     const dist = {}
     const lbIds = new Set(configNodes.filter(n => n.type === 'LOAD_BALANCER').map(n => n.id))
-    for (const req of simResult.requests ?? []) {
-      const path = req.path ?? []
+    for (const flow of simResult.flowSummary ?? []) {
+      const path = flow.path ?? []
       for (let i = 0; i < path.length - 1; i++) {
         if (lbIds.has(path[i])) {
           if (!dist[path[i]]) dist[path[i]] = {}
-          dist[path[i]][path[i + 1]] = (dist[path[i]][path[i + 1]] ?? 0) + 1
+          dist[path[i]][path[i + 1]] = (dist[path[i]][path[i + 1]] ?? 0) + flow.count
         }
       }
     }
@@ -123,12 +123,12 @@ function GraphInner({ formConfig, simResult, selectedRequest, animStep }) {
         latency: n.latency,
         compact,
         inPath: pathSet.has(n.id),
-        animating: selectedRequest != null && animStep >= 0 && selectedRequest.path[animStep] === n.id,
+        animating: selectedPath != null && animStep >= 0 && selectedPath[animStep] === n.id,
         metrics: simResult?.nodeMetrics?.[n.id] ?? null,
         distribution: lbDistribution[n.id] ?? {},
       },
     })),
-    [configNodes, positions, pathSet, animStep, selectedRequest, simResult, lbDistribution, compact]
+    [configNodes, positions, pathSet, animStep, selectedPath, simResult, lbDistribution, compact]
   )
 
   const tooManyEdges = connections.length > MAX_EDGES_RENDERED
@@ -136,9 +136,9 @@ function GraphInner({ formConfig, simResult, selectedRequest, animStep }) {
   const rfEdges = useMemo(() => {
     if (tooManyEdges) {
       // Only render path edges when there are too many total edges
-      return (selectedRequest?.path
-        ? selectedRequest.path.slice(0, -1).map((src, i) => {
-            const tgt = selectedRequest.path[i + 1]
+      return (selectedPath
+        ? selectedPath.slice(0, -1).map((src, i) => {
+            const tgt = selectedPath[i + 1]
             const id = `${src}-${tgt}`
             return { id, source: src, target: tgt, animated: true, style: { stroke: '#f59e0b', strokeWidth: 2.5 } }
           })
@@ -155,7 +155,7 @@ function GraphInner({ formConfig, simResult, selectedRequest, animStep }) {
         style: { stroke: inPath ? '#f59e0b' : '#cbd5e1', strokeWidth: inPath ? 2.5 : 1 },
       }
     })
-  }, [connections, pathEdges, selectedRequest, tooManyEdges])
+  }, [connections, pathEdges, selectedPath, tooManyEdges])
 
   return (
     <ReactFlow

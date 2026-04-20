@@ -31,4 +31,10 @@ public class NodeRequest {
 	private Long latency;
 
 	private ApiLbStrategy strategy;
+
+	@PositiveOrZero
+	private Double hitRate;
+
+	@PositiveOrZero
+	private Long hitLatency;
 }

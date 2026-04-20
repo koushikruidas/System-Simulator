@@ -20,6 +20,7 @@ import com.koushik.systemSimulator.application.model.SimulationCommand;
 import com.koushik.systemSimulator.application.model.SimulationResult;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -42,6 +43,13 @@ class DefaultSimulationRunnerTest {
 				))),
 				new SimulationResultAssembler()
 		);
+	}
+
+	/** For simulations with ≤5 requests all traces appear in samples.first. */
+	private List<RequestTrace> allSamples(SimulationResult result) {
+		List<RequestTrace> all = new ArrayList<>(result.getSamples().getFirst());
+		all.addAll(result.getSamples().getSlowest());
+		return all;
 	}
 
 	@Test
@@ -104,10 +112,17 @@ class DefaultSimulationRunnerTest {
 
 		SimulationResult result = buildRunner().run(command);
 
-		assertEquals(1, result.getRequestTraces().size());
-		RequestTrace trace = result.getRequestTraces().get(0);
+		// Single request → appears in samples.first
+		assertEquals(1, result.getSamples().getFirst().size());
+		RequestTrace trace = result.getSamples().getFirst().get(0);
 		assertEquals(List.of("lb", "service", "db"), trace.getPath());
 		assertEquals(RequestOutcome.COMPLETED, trace.getOutcome());
+
+		// Flow aggregation: single path group
+		assertEquals(1, result.getFlowGroups().size());
+		assertEquals(List.of("lb", "service", "db"), result.getFlowGroups().get(0).getPath());
+		assertEquals("COMPLETED", result.getFlowGroups().get(0).getOutcome());
+		assertEquals(1, result.getFlowGroups().get(0).getCount());
 	}
 
 	@Test
@@ -127,13 +142,19 @@ class DefaultSimulationRunnerTest {
 
 		SimulationResult result = buildRunner().run(command);
 
-		assertEquals(4, result.getRequestTraces().size());
-		assertTrue(result.getRequestTraces().stream().allMatch(t -> t.getPath().get(0).equals("lb")));
-		assertTrue(result.getRequestTraces().stream().allMatch(t -> t.getPath().get(2).equals("db")));
-		long s1Count = result.getRequestTraces().stream().filter(t -> t.getPath().get(1).equals("s1")).count();
-		long s2Count = result.getRequestTraces().stream().filter(t -> t.getPath().get(1).equals("s2")).count();
+		// 4 requests (≤5) → all in samples.first
+		List<RequestTrace> traces = result.getSamples().getFirst();
+		assertEquals(4, traces.size());
+		assertTrue(traces.stream().allMatch(t -> t.getPath().get(0).equals("lb")));
+		assertTrue(traces.stream().allMatch(t -> t.getPath().get(2).equals("db")));
+		long s1Count = traces.stream().filter(t -> t.getPath().get(1).equals("s1")).count();
+		long s2Count = traces.stream().filter(t -> t.getPath().get(1).equals("s2")).count();
 		assertEquals(2, s1Count);
 		assertEquals(2, s2Count);
+
+		// Flow groups: 2 distinct paths (lb→s1→db and lb→s2→db)
+		assertEquals(2, result.getFlowGroups().size());
+		result.getFlowGroups().forEach(g -> assertEquals(2, g.getCount()));
 	}
 
 	@Test
@@ -150,7 +171,7 @@ class DefaultSimulationRunnerTest {
 
 		SimulationResult result = buildRunner().run(command);
 
-		RequestTrace trace = result.getRequestTraces().get(0);
+		RequestTrace trace = result.getSamples().getFirst().get(0);
 		assertEquals(16, trace.getTotalLatency());
 		assertEquals(3, trace.getBreakdown().size());
 
@@ -184,9 +205,10 @@ class DefaultSimulationRunnerTest {
 
 		SimulationResult result = buildRunner().run(command);
 
-		RequestTrace r1 = result.getRequestTraces().stream()
+		// Both requests in samples.first (2 ≤ 5)
+		RequestTrace r1 = result.getSamples().getFirst().stream()
 				.filter(t -> t.getRequestId().equals("request-1")).findFirst().orElseThrow();
-		RequestTrace r2 = result.getRequestTraces().stream()
+		RequestTrace r2 = result.getSamples().getFirst().stream()
 				.filter(t -> t.getRequestId().equals("request-2")).findFirst().orElseThrow();
 
 		assertEquals(0, r1.getBreakdown().get(1).getQueueTime());

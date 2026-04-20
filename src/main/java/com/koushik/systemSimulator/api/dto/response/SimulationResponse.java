@@ -14,10 +14,12 @@ import java.util.Map;
 @AllArgsConstructor
 public class SimulationResponse {
 
-	private int totalRequests;
-	private int successfulRequests;
-	private int failedRequests;
-	private double averageLatency;
-	private Map<String, NodeMetricsResponse> nodeMetrics;
-	private List<RequestTraceResponse> requests;
+    private int totalRequests;
+    private int successfulRequests;
+    private int failedRequests;
+    private double averageLatency;
+    private Map<String, NodeMetricsResponse> nodeMetrics;
+    private List<FlowGroupResponse> flowSummary;
+    private Map<Long, Long> latencyDistribution;
+    private RequestSamplesResponse samples;
 }

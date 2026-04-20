@@ -8,7 +8,9 @@ export async function runSimulation(config) {
       capacity: n.capacity,
       queueLimit: n.queueLimit,
       latency: n.latency,
-      ...(n.strategy ? { strategy: n.strategy } : {}),
+      ...(n.strategy   != null ? { strategy: n.strategy }     : {}),
+      ...(n.hitRate    != null ? { hitRate: n.hitRate }        : {}),
+      ...(n.hitLatency != null ? { hitLatency: n.hitLatency }  : {}),
     })),
     connections: config.connections,
   }

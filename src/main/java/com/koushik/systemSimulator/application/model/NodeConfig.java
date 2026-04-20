@@ -15,4 +15,6 @@ public class NodeConfig {
 	private final Integer queueLimit;
 	private final Long latency;
 	private final LbStrategy strategy;
+	private final Double hitRate;
+	private final Long hitLatency;
 }

@@ -37,8 +37,9 @@ const TYPE_COLOR = {
   LOAD_BALANCER: { bar: '#7c3aed', light: '#ede9fe', text: 'text-violet-700', label: 'LB' },
   SERVICE:       { bar: '#2563eb', light: '#dbeafe', text: 'text-blue-700',   label: 'SVC' },
   DATABASE:      { bar: '#059669', light: '#d1fae5', text: 'text-emerald-700',label: 'DB' },
+  CACHE:         { bar: '#d97706', light: '#fef3c7', text: 'text-amber-700',  label: 'CACHE' },
 }
-const TYPES = ['LOAD_BALANCER', 'SERVICE', 'DATABASE']
+const TYPES = ['LOAD_BALANCER', 'SERVICE', 'DATABASE', 'CACHE']
 const STRATEGIES = ['ROUND_ROBIN', 'LEAST_CONNECTIONS']
 
 let _uid = 0
@@ -122,6 +123,23 @@ function LayerCard({ layer, index, total, onChange, onRemove, onDuplicate, onMov
               {STRATEGIES.map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
             </select>
           </div>
+        )}
+        {layer.type === 'CACHE' && (
+          <>
+            <div>
+              <Label>Hit Rate (0–1)</Label>
+              <input
+                type="number" min={0} max={1} step={0.1}
+                value={layer.config.hitRate ?? 0.5}
+                onChange={e => cfg('hitRate', Math.min(1, Math.max(0, parseFloat(e.target.value) || 0)))}
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <Label>Hit Latency (ms)</Label>
+              <NumInput min={0} value={layer.config.hitLatency ?? 1} onChange={v => cfg('hitLatency', v)} />
+            </div>
+          </>
         )}
       </div>
     </div>

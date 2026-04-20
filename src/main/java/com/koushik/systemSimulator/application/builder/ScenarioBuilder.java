@@ -18,6 +18,9 @@ public interface ScenarioBuilder {
 
 	ScenarioBuilder addDatabase(String nodeId, int capacity, int queueLimit, long latency);
 
+	ScenarioBuilder addCache(String nodeId, int capacity, int queueLimit,
+							 double hitRate, long hitLatency, long missLatency);
+
 	ScenarioBuilder connect(String sourceNodeId, String targetNodeId);
 
 	ScenarioBuilder withRequestCount(int requestCount);
