@@ -49,12 +49,13 @@ function uid() { return `layer-${++_uid}-${Date.now()}` }
 const inputCls = 'w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:border-blue-400 bg-white'
 const selectCls = `${inputCls} cursor-pointer`
 
-function NumInput({ value, min = 0, onChange }) {
+function NumInput({ value, min = 0, onChange, 'data-testid': testId }) {
   return (
     <input
       type="number" min={min} value={value}
       onChange={e => onChange(Math.max(min, parseInt(e.target.value) || min))}
       className={inputCls}
+      data-testid={testId}
     />
   )
 }
@@ -64,7 +65,7 @@ function Label({ children }) {
 }
 
 // ── Layer Card ─────────────────────────────────────────────────────────────────
-function LayerCard({ layer, index, total, onChange, onRemove, onDuplicate, onMoveUp, onMoveDown }) {
+function LayerCard({ layer, index, total, onChange, onRemove, onDuplicate, onMoveUp, onMoveDown, 'data-index': dataIndex }) {
   const color = TYPE_COLOR[layer.type] ?? TYPE_COLOR.SERVICE
 
   function cfg(key, val) {
@@ -102,19 +103,19 @@ function LayerCard({ layer, index, total, onChange, onRemove, onDuplicate, onMov
       <div className="p-2.5 grid grid-cols-2 gap-x-2 gap-y-1.5">
         <div>
           <Label>Count</Label>
-          <NumInput min={1} value={layer.count} onChange={v => onChange({ ...layer, count: v })} />
+          <NumInput min={1} value={layer.count} onChange={v => onChange({ ...layer, count: v })} data-testid={`layer-${index}-count`} />
         </div>
         <div>
           <Label>Latency (ms)</Label>
-          <NumInput min={0} value={layer.config.latency ?? 0} onChange={v => cfg('latency', v)} />
+          <NumInput min={0} value={layer.config.latency ?? 0} onChange={v => cfg('latency', v)} data-testid={`layer-${index}-latency`} />
         </div>
         <div>
           <Label>Capacity</Label>
-          <NumInput min={1} value={layer.config.capacity ?? 1} onChange={v => cfg('capacity', v)} />
+          <NumInput min={1} value={layer.config.capacity ?? 1} onChange={v => cfg('capacity', v)} data-testid={`layer-${index}-capacity`} />
         </div>
         <div>
           <Label>Queue Limit</Label>
-          <NumInput min={0} value={layer.config.queueLimit ?? 0} onChange={v => cfg('queueLimit', v)} />
+          <NumInput min={0} value={layer.config.queueLimit ?? 0} onChange={v => cfg('queueLimit', v)} data-testid={`layer-${index}-queue-limit`} />
         </div>
         {layer.type === 'LOAD_BALANCER' && (
           <div className="col-span-2">
@@ -204,7 +205,7 @@ export default function ConfigPanel({
         <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Presets</div>
         <div className="flex gap-1.5 flex-wrap">
           {Object.entries(PRESETS).map(([key, p]) => (
-            <button key={key} onClick={() => loadPreset(key)}
+            <button key={key} onClick={() => loadPreset(key)} data-testid={`preset-${key}`}
               className="text-[10px] px-2 py-1 rounded border border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition-colors">
               {p.label}
             </button>
@@ -217,7 +218,7 @@ export default function ConfigPanel({
         <div className="flex items-center justify-between">
           <label className="flex items-center gap-1.5 cursor-pointer select-none">
             <input type="checkbox" checked={timeSeriesMode} onChange={e => onTimeSeriesModeChange(e.target.checked)}
-              className="w-3 h-3 accent-blue-600" />
+              className="w-3 h-3 accent-blue-600" data-testid="timeseries-toggle" />
             <span className="text-[10px] text-gray-500 font-medium">Time-Series Mode</span>
           </label>
           <div className="text-[10px] text-gray-400 text-right leading-relaxed">
@@ -229,17 +230,17 @@ export default function ConfigPanel({
           <div className="grid grid-cols-2 gap-x-2">
             <div>
               <Label>Arrival Rate</Label>
-              <NumInput min={1} value={arrivalRate} onChange={onArrivalRateChange} />
+              <NumInput min={1} value={arrivalRate} onChange={onArrivalRateChange} data-testid="arrival-rate-input" />
             </div>
             <div>
               <Label>Duration</Label>
-              <NumInput min={1} value={simulationDuration} onChange={onSimulationDurationChange} />
+              <NumInput min={1} value={simulationDuration} onChange={onSimulationDurationChange} data-testid="duration-input" />
             </div>
           </div>
         ) : (
           <div>
             <Label>Requests</Label>
-            <NumInput min={1} value={requestCount} onChange={onRequestCountChange} />
+            <NumInput min={1} value={requestCount} onChange={onRequestCountChange} data-testid="requests-input" />
           </div>
         )}
       </div>
@@ -269,11 +270,12 @@ export default function ConfigPanel({
       {/* Footer */}
       <div className="px-3 pb-3 pt-2 border-t border-gray-100">
         {error && (
-          <div className="mb-2 text-[10px] text-red-600 bg-red-50 border border-red-100 rounded px-2 py-1.5 break-words">
+          <div data-testid="error-message" className="mb-2 text-[10px] text-red-600 bg-red-50 border border-red-100 rounded px-2 py-1.5 break-words">
             {error}
           </div>
         )}
         <button
+          data-testid="run-button"
           onClick={onRun}
           disabled={loading || layers.length === 0}
           className={`w-full py-2 rounded-lg text-sm font-semibold transition-colors ${

@@ -42,4 +42,15 @@ public final class Topology {
 				.map(LinkDefinition::targetNodeId)
 				.toList();
 	}
+
+	/** Returns node IDs that have no incoming links (in-degree = 0). */
+	public List<String> getEntryNodes() {
+		java.util.Set<String> hasIncoming = links.stream()
+				.map(LinkDefinition::targetNodeId)
+				.collect(Collectors.toUnmodifiableSet());
+		return nodesById.keySet().stream()
+				.filter(id -> !hasIncoming.contains(id))
+				.sorted()
+				.toList();
+	}
 }

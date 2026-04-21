@@ -13,6 +13,8 @@ import com.koushik.systemSimulator.application.model.SimulationResult;
 import com.koushik.systemSimulator.application.model.TimeSeriesPoint;
 import com.koushik.systemSimulator.simulation.state.RequestRuntimeState;
 import com.koushik.systemSimulator.simulation.engine.SimulationReport;
+import com.koushik.systemSimulator.simulation.engine.TimeStepReport;
+import com.koushik.systemSimulator.simulation.batch.TickMetrics;
 import com.koushik.systemSimulator.simulation.metrics.SimulationMetrics;
 import com.koushik.systemSimulator.simulation.model.EventType;
 import com.koushik.systemSimulator.simulation.model.SimulationEvent;
@@ -104,6 +106,47 @@ public class SimulationResultAssembler {
                 .flowGroups(flowGroups)
                 .latencyDistribution(latencyDistribution)
                 .samples(samples)
+                .timeSeries(timeSeries)
+                .build();
+    }
+
+    public SimulationResult assembleFromTimeStep(SimulationCommand command, TimeStepReport report) {
+        Map<String, NodeMetrics> nodeMetrics = new LinkedHashMap<>();
+        for (NodeConfig nodeConfig : command.getNodes()) {
+            String id = nodeConfig.getNodeId();
+            nodeMetrics.put(id, NodeMetrics.builder()
+                    .processedRequests(report.nodeProcessedCounts().getOrDefault(id, 0L))
+                    .droppedRequests(report.nodeDroppedCounts().getOrDefault(id, 0L))
+                    .build());
+        }
+
+        int duration = command.getSimulationDuration();
+        int arrivalRate = command.getArrivalRate();
+        List<TimeSeriesPoint> timeSeries = new ArrayList<>();
+        for (TickMetrics tm : report.ticks()) {
+            int incoming = tm.tick() < duration ? arrivalRate : 0;
+            timeSeries.add(TimeSeriesPoint.builder()
+                    .time((int) tm.tick())
+                    .incoming(incoming)
+                    .processed(tm.completed())
+                    .dropped(tm.dropped())
+                    .queues(Map.copyOf(tm.queueDepths()))
+                    .avgLatency(tm.avgLatency())
+                    .build());
+        }
+
+        double averageLatency = report.totalCompleted() > 0
+                ? (double) report.totalLatencySum() / report.totalCompleted() : 0.0;
+
+        return SimulationResult.builder()
+                .totalRequests((int) report.totalInjected())
+                .successfulRequests((int) report.totalCompleted())
+                .failedRequests((int) report.totalDropped())
+                .averageLatency(averageLatency)
+                .nodeMetrics(nodeMetrics)
+                .flowGroups(List.of())
+                .latencyDistribution(Map.of())
+                .samples(RequestSamples.builder().first(List.of()).slowest(List.of()).build())
                 .timeSeries(timeSeries)
                 .build();
     }

@@ -41,7 +41,7 @@ export default function TimeSeriesPanel({ timeSeries, nodes }) {
   }))
 
   return (
-    <div className="h-full bg-white border-t border-gray-200 grid grid-cols-2 grid-rows-2 gap-px p-1" style={{ fontSize: 10 }}>
+    <div data-testid="timeseries-panel" className="h-full bg-white border-t border-gray-200 grid grid-cols-2 grid-rows-2 gap-px p-1" style={{ fontSize: 10 }}>
 
       {/* 1. Requests per time-unit */}
       <MiniChart title="Requests / Time-Unit" data={timeSeries}>

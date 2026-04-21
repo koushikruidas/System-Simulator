@@ -130,16 +130,16 @@ export default function App() {
       <header className="h-11 bg-white border-b border-gray-200 flex items-center px-5 gap-4 shadow-sm flex-shrink-0">
         <span className="text-sm font-bold text-gray-800 tracking-tight">🔬 System Simulator</span>
         {simResult && (
-          <div className="flex items-center gap-4 text-[11px] text-gray-500 ml-4 overflow-hidden">
-            <span className="text-emerald-600 font-medium flex-shrink-0">✓ {simResult.successfulRequests} completed</span>
+          <div data-testid="results-section" className="flex items-center gap-4 text-[11px] text-gray-500 ml-4 overflow-hidden">
+            <span data-testid="stat-completed" className="text-emerald-600 font-medium flex-shrink-0">✓ {simResult.successfulRequests} completed</span>
             {simResult.failedRequests > 0 && (
-              <span className="text-red-500 font-medium flex-shrink-0">✗ {simResult.failedRequests} dropped</span>
+              <span data-testid="stat-failed" className="text-red-500 font-medium flex-shrink-0">✗ {simResult.failedRequests} dropped</span>
             )}
-            <span className="flex-shrink-0">avg <strong className="text-gray-700">{simResult.averageLatency}ms</strong></span>
+            <span data-testid="stat-avg-latency" className="flex-shrink-0">avg <strong className="text-gray-700">{simResult.averageLatency}ms</strong></span>
             <span className="text-gray-300 flex-shrink-0">|</span>
             <div className="flex gap-3 overflow-x-auto">
               {Object.entries(simResult.nodeMetrics ?? {}).map(([id, m]) => (
-                <span key={id} className="text-gray-500 flex-shrink-0">
+                <span key={id} data-testid={`node-metric-${id}`} className="text-gray-500 flex-shrink-0">
                   <span className="font-medium text-gray-700">{id}</span> {m.processedRequests}req
                   {m.droppedRequests > 0 && <span className="text-red-500"> ({m.droppedRequests}✗)</span>}
                 </span>

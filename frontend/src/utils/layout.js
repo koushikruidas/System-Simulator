@@ -6,8 +6,10 @@ export const NODE_H = 80
 /**
  * Computes left-to-right dagre layout positions.
  * Returns a map of nodeId → { x, y } (top-left corner for React Flow).
+ * nodeHeights: optional map of nodeId → height override (for nodes whose rendered
+ * height exceeds NODE_H, e.g. LBs with distribution lists post-simulation).
  */
-export function computeDagreLayout(nodes, connections) {
+export function computeDagreLayout(nodes, connections, nodeHeights = {}) {
   const g = new dagre.graphlib.Graph()
   g.setDefaultEdgeLabel(() => ({}))
   g.setGraph({
@@ -18,7 +20,7 @@ export function computeDagreLayout(nodes, connections) {
     marginy: 30,
   })
 
-  nodes.forEach(n => g.setNode(n.id, { width: NODE_W, height: NODE_H }))
+  nodes.forEach(n => g.setNode(n.id, { width: NODE_W, height: nodeHeights[n.id] ?? NODE_H }))
 
   connections.forEach(c => {
     if (g.hasNode(c.sourceNodeId) && g.hasNode(c.targetNodeId)) {

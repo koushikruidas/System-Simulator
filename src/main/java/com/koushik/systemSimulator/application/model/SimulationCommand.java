@@ -26,6 +26,8 @@ public class SimulationCommand {
 
 	private final String entryNodeId;
 
+	private final List<String> entryNodeIds;
+
 	public boolean isTimeBased() {
 		return arrivalRate != null && simulationDuration != null;
 	}

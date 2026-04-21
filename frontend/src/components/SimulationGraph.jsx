@@ -8,7 +8,7 @@ import ReactFlow, {
   MiniMap,
 } from 'reactflow'
 import 'reactflow/dist/style.css'
-import { computeDagreLayout } from '../utils/layout.js'
+import { computeDagreLayout, NODE_H } from '../utils/layout.js'
 
 const TYPE_STYLE = {
   LOAD_BALANCER: { bg: '#ede9fe', border: '#7c3aed', badge: '#7c3aed', label: 'LB' },
@@ -107,10 +107,19 @@ function GraphInner({ formConfig, simResult, selectedPath, animStep }) {
     return dist
   }, [simResult, configNodes])
 
-  const positions = useMemo(
-    () => computeDagreLayout(configNodes, connections),
-    [configNodes, connections]
-  )
+  const positions = useMemo(() => {
+    // LB nodes grow taller after a simulation run (distribution list adds ~14px per item).
+    // Pass the actual per-node heights to dagre so it reserves the right amount of space.
+    const nodeHeights = {}
+    configNodes.forEach(n => {
+      const distSize = Object.keys(lbDistribution[n.id] ?? {}).length
+      if (distSize > 0) {
+        const shownLines = Math.min(distSize, 4) + (distSize > 4 ? 1 : 0)
+        nodeHeights[n.id] = NODE_H + 16 + shownLines * 14
+      }
+    })
+    return computeDagreLayout(configNodes, connections, nodeHeights)
+  }, [configNodes, connections, lbDistribution])
 
   const rfNodes = useMemo(() =>
     configNodes.map((n, idx) => ({
