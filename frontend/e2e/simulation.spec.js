@@ -565,6 +565,228 @@ test.describe('Group 8: Loading and UX State', () => {
   })
 })
 
+// ── Group 10: Queue Limit, Multi-Entry, and Invariant Tests ──────────────────
+
+test.describe('Group 10: Queue Limit, Multi-Entry, and Invariant Tests', () => {
+
+  /**
+   * Test 2 — Queue Limit UI Check
+   * Configures svc with capacity=5 and queueLimit=40.
+   * Under extreme load (rate=500), drops must occur AND every tick's svc queue depth
+   * must stay within queueLimit + capacity = 45 (inputQueue ≤ 40, inFlight batches ≤ 5).
+   */
+  test('queue depth bounded by queueLimit + capacity at every tick', async ({ page }) => {
+    let apiResponse = null
+    await page.route('**/simulate', async route => {
+      const response = await route.fetch()
+      const body = await response.json()
+      apiResponse = body
+      await route.fulfill({ response, json: body })
+    })
+
+    await page.goto('/')
+    await page.getByTestId('preset-simple').click()
+    await enableTimeSeriesMode(page)
+
+    await setLayerCapacity(page, 0, 1000)
+    await setLayerQueueLimit(page, 0, 0)
+    await setLayerCapacity(page, 1, 5)
+    await setLayerQueueLimit(page, 1, 40)
+    await setLayerLatency(page, 1, 5)
+    await setLayerCapacity(page, 2, 100)
+    await setLayerQueueLimit(page, 2, 1000)
+
+    await setArrivalRate(page, 500)
+    await setDuration(page, 5)
+
+    await clickRun(page)
+    await waitForResults(page)
+
+    expect(apiResponse).not.toBeNull()
+    expect(apiResponse.failedRequests).toBeGreaterThan(0)
+
+    const timeSeries = apiResponse.timeSeries ?? []
+    expect(timeSeries.length).toBeGreaterThan(0)
+
+    // queueDepths["svc"] = inputQueue_requests + inFlight_batch_count
+    // Both are individually bounded: inputQueue ≤ queueLimit=40, inFlight.size() ≤ capacity=5
+    const MAX_DEPTH = 40 + 5
+    for (const point of timeSeries) {
+      const svcDepth = point.queues?.svc ?? 0
+      expect(svcDepth,
+        `svc queue depth ${svcDepth} at tick ${point.time} must not exceed ${MAX_DEPTH}`)
+        .toBeLessThanOrEqual(MAX_DEPTH)
+    }
+  })
+
+  /**
+   * Test 3 — Multi-Entry Behavior
+   * The "scaled" preset creates 2 LBs (lb-1, lb-2) with no incoming connections.
+   * resolveEntryNodes() returns both as entry nodes and splits arrivalRate between them.
+   * Both must show processedRequests > 0 and together account for all injected requests.
+   */
+  test('multi-entry: both lb-1 and lb-2 receive and process traffic', async ({ page }) => {
+    let apiResponse = null
+    await page.route('**/simulate', async route => {
+      const response = await route.fetch()
+      const body = await response.json()
+      apiResponse = body
+      await route.fulfill({ response, json: body })
+    })
+
+    await page.goto('/')
+    await page.getByTestId('preset-scaled').click()
+    await enableTimeSeriesMode(page)
+    await setArrivalRate(page, 10)
+    await setDuration(page, 3)
+
+    await clickRun(page)
+    await waitForResults(page)
+
+    expect(apiResponse).not.toBeNull()
+
+    const lb1 = apiResponse.nodeMetrics?.['lb-1']?.processedRequests ?? 0
+    const lb2 = apiResponse.nodeMetrics?.['lb-2']?.processedRequests ?? 0
+
+    expect(lb1).toBeGreaterThan(0)
+    expect(lb2).toBeGreaterThan(0)
+
+    // Both LBs together must account for all injected requests (10 * 3 = 30)
+    expect(lb1 + lb2).toBe(10 * 3)
+  })
+
+  /**
+   * Test 5 — Stress Test with Processing Continuity
+   * With generous capacity and 20s duration, most requests should complete.
+   * Drops, if any, must be spread over many ticks — not all concentrated in one tick.
+   */
+  test('stress test: high load with continuous processing and gradual drops', async ({ page }) => {
+    test.setTimeout(120_000)
+
+    let apiResponse = null
+    await page.route('**/simulate', async route => {
+      const response = await route.fetch()
+      const body = await response.json()
+      apiResponse = body
+      await route.fulfill({ response, json: body })
+    })
+
+    await page.goto('/')
+    await page.getByTestId('preset-simple').click()
+    await enableTimeSeriesMode(page)
+
+    await setLayerCapacity(page, 0, 1000)
+    await setLayerQueueLimit(page, 0, 0)
+    await setLayerCapacity(page, 1, 30)
+    await setLayerQueueLimit(page, 1, 200)
+    await setLayerLatency(page, 1, 3)
+    await setLayerCapacity(page, 2, 30)
+    await setLayerQueueLimit(page, 2, 200)
+    await setLayerLatency(page, 2, 5)
+
+    await setArrivalRate(page, 200)
+    await setDuration(page, 20)
+
+    await clickRun(page)
+    await waitForResults(page)
+
+    expect(apiResponse).not.toBeNull()
+    expect(apiResponse.successfulRequests).toBeGreaterThan(0)
+
+    const timeSeries = apiResponse.timeSeries ?? []
+
+    // Completions must be spread across many ticks (continuous processing, not all in one burst)
+    const ticksWithCompletions = timeSeries.filter(p => p.processed > 0).length
+    expect(ticksWithCompletions).toBeGreaterThan(5)
+
+    // If drops occur, they must span more than one tick (gradual, not a single burst)
+    if (apiResponse.failedRequests > 0) {
+      const ticksWithDrops = timeSeries.filter(p => p.dropped > 0).length
+      expect(ticksWithDrops).toBeGreaterThan(1)
+    }
+  })
+
+  /**
+   * Test 6 — Loading State
+   * The run button must be disabled while a simulation is in-flight and re-enabled
+   * once results arrive. Tests a different variant from Group 8 (uses actual API, not mock).
+   */
+  test('loading state: button disabled then re-enabled after successful run', async ({ page }) => {
+    let resolveRequest
+    await page.route('**/simulate', async route => {
+      await new Promise(r => { resolveRequest = r })
+      const response = await route.fetch()
+      await route.fulfill({ response })
+    })
+
+    await page.goto('/')
+    await page.getByTestId('preset-simple').click()
+    await enableTimeSeriesMode(page)
+    await setLayerCapacity(page, 0, 20)
+    await setLayerCapacity(page, 1, 20)
+    await setLayerCapacity(page, 2, 20)
+    await setLayerQueueLimit(page, 1, 50)
+    await setLayerQueueLimit(page, 2, 50)
+    await setArrivalRate(page, 5)
+    await setDuration(page, 5)
+
+    await clickRun(page)
+    await expect(page.getByTestId('run-button')).toBeDisabled()
+
+    resolveRequest()
+    await waitForResults(page)
+    await expect(page.getByTestId('run-button')).not.toBeDisabled()
+  })
+
+  /**
+   * Test — Drop Timing
+   * Tick 0 must never have drops: PROCESS runs before INJECT on tick 0, so the
+   * service queue is still empty when processing begins.
+   * Drops must start at tick 1 or later, once the LB has forwarded its first batch.
+   */
+  test('drop timing: tick 0 has no drops, drops start at tick 1 or later', async ({ page }) => {
+    let apiResponse = null
+    await page.route('**/simulate', async route => {
+      const response = await route.fetch()
+      const body = await response.json()
+      apiResponse = body
+      await route.fulfill({ response, json: body })
+    })
+
+    await page.goto('/')
+    await page.getByTestId('preset-simple').click()
+    await enableTimeSeriesMode(page)
+
+    await setLayerCapacity(page, 0, 1000)
+    await setLayerQueueLimit(page, 0, 0)
+    await setLayerCapacity(page, 1, 2)
+    await setLayerQueueLimit(page, 1, 5)
+    await setLayerLatency(page, 1, 10)
+    await setLayerCapacity(page, 2, 100)
+    await setLayerQueueLimit(page, 2, 500)
+
+    await setArrivalRate(page, 100)
+    await setDuration(page, 5)
+
+    await clickRun(page)
+    await waitForResults(page)
+
+    expect(apiResponse).not.toBeNull()
+    expect(apiResponse.failedRequests).toBeGreaterThan(0)
+
+    const timeSeries = apiResponse.timeSeries ?? []
+    expect(timeSeries.length).toBeGreaterThan(1)
+
+    // Tick 0: PROCESS executes before INJECT, so service queue is empty — no drops possible
+    const tick0Drops = timeSeries.find(p => p.time === 0)?.dropped ?? 0
+    expect(tick0Drops).toBe(0)
+
+    // Drops must occur (the scenario is designed to overflow the service queue)
+    const ticksWithDrops = timeSeries.filter(p => p.dropped > 0).length
+    expect(ticksWithDrops).toBeGreaterThan(0)
+  })
+})
+
 // ── Group 9: Long-Run Stress Test ─────────────────────────────────────────────
 
 test.describe('Group 9: Long-Run Stress Test', () => {

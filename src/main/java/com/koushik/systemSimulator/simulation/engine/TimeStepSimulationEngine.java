@@ -159,6 +159,8 @@ public final class TimeStepSimulationEngine {
             allTicks.add(new TickMetrics(
                     tick, tickCompleted, tickDropped, Map.copyOf(queueDepths), avgLatency));
 
+            validateTickInvariants(tick, totalInjected, totalCompleted, totalDropped, pendingDeliveries);
+
             if (tick >= duration - 1 && pendingDeliveries.isEmpty() && isIdle()) {
                 break;
             }
@@ -184,7 +186,7 @@ public final class TimeStepSimulationEngine {
     private NodeTickResult processNode(NodeDefinition def, BatchNodeState state, long tick) {
         return switch (def.nodeType()) {
             case CACHE -> processCacheNode(def, state, tick);
-            case DELAY_LOAD_BALANCER,
+            case LOAD_BALANCER,
                  ROUND_ROBIN_LOAD_BALANCER,
                  LEAST_CONNECTIONS_LOAD_BALANCER -> processLbNode(def, state, tick);
             default -> processProcessingNode(def, state, tick);
@@ -522,6 +524,8 @@ public final class TimeStepSimulationEngine {
         return true;
     }
 
+    // ── Runtime invariant checks ──────────────────────────────────────────────
+
     private long computeTerminationCap() {
         long latencySum = nodeDefinitions.stream()
                 .mapToLong(NodeDefinition::processingLatency)
@@ -538,5 +542,79 @@ public final class TimeStepSimulationEngine {
         // In practice the isIdle() check exits the loop long before this cap is reached.
         long drainBuffer = (long) arrivalRate * duration * Math.max(maxLatency, maxHitLatency + 1);
         return duration + drainBuffer + latencySum + hopBuffer + 1;
+    }
+
+    private void validateTickInvariants(
+            long tick,
+            long injected,
+            long completed,
+            long dropped,
+            List<ForwardedBatch> pending
+    ) {
+        // ─────────────────────────────────────────────
+        // (1) Basic conservation sanity (always true)
+        // ─────────────────────────────────────────────
+        if (injected < completed + dropped) {
+            logInvariant(tick, "Conservation broken: injected=%d < completed+dropped=%d",
+                    injected, completed + dropped);
+        }
+
+        // ─────────────────────────────────────────────
+        // (2) Per-node safety checks
+        // ─────────────────────────────────────────────
+        for (NodeDefinition def : nodeDefinitions) {
+            BatchNodeState state = stateByNodeId.get(def.nodeId());
+
+            if (state.processedCount < 0) {
+                logInvariant(tick, "Node %s negative processedCount=%d",
+                        def.nodeId(), state.processedCount);
+            }
+
+            if (state.droppedCount < 0) {
+                logInvariant(tick, "Node %s negative droppedCount=%d",
+                        def.nodeId(), state.droppedCount);
+            }
+
+            int totalQueued = state.inputQueue.stream().mapToInt(RequestBatch::size).sum();
+
+            if (totalQueued < 0) {
+                logInvariant(tick, "Node %s negative queue size=%d",
+                        def.nodeId(), totalQueued);
+            }
+
+            // ✅ STRICT queue enforcement (no exceptions)
+            if (def.queueLimit() > 0 && totalQueued > def.queueLimit()) {
+                logInvariant(tick,
+                        "Node %s queue overflow: queue=%d > limit=%d",
+                        def.nodeId(), totalQueued, def.queueLimit());
+            }
+        }
+
+        // ─────────────────────────────────────────────
+        // (3) Full conservation (with tolerance)
+        // ─────────────────────────────────────────────
+        long inSystem = 0;
+
+        for (BatchNodeState state : stateByNodeId.values()) {
+            inSystem += state.inputQueue.stream().mapToLong(RequestBatch::size).sum();
+            inSystem += state.inFlight.stream().mapToLong(InFlightBatch::size).sum();
+            inSystem += state.hitInFlight.stream().mapToLong(InFlightBatch::size).sum();
+            inSystem += state.missInFlight.stream().mapToLong(InFlightBatch::size).sum();
+        }
+
+        inSystem += pending.stream().mapToLong(ForwardedBatch::size).sum();
+
+        long diff = injected - (completed + dropped + inSystem);
+
+        // allow small tolerance due to tick timing
+        if (Math.abs(diff) > 0) {
+            logInvariant(tick,
+                    "Conservation mismatch: injected=%d, completed=%d, dropped=%d, inSystem=%d, diff=%d",
+                    injected, completed, dropped, inSystem, diff);
+        }
+    }
+
+    private void logInvariant(long tick, String message, Object... args) {
+        System.err.printf("[INVARIANT][tick=%d] %s%n", tick, String.format(message, args));
     }
 }

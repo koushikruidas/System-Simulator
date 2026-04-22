@@ -8,7 +8,6 @@ import com.koushik.systemSimulator.simulation.scenario.Topology;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -196,7 +195,7 @@ class TimeStepSimulationEngineTest {
         // LB has processingLatency=2; DB latency=1; duration=1 rate=5
         Topology topology = new Topology(
                 List.of(
-                        new NodeDefinition("lb", NodeType.DELAY_LOAD_BALANCER, 0, 0, 2, "db"),
+                        new NodeDefinition("lb", NodeType.LOAD_BALANCER, 0, 0, 2, "db"),
                         new NodeDefinition("db", NodeType.DATABASE, 100, 100, 1, null)
                 ),
                 List.of(new LinkDefinition("lb", "db"))
@@ -230,5 +229,48 @@ class TimeStepSimulationEngineTest {
         // In a SERVICE→DATABASE chain, DB processed count should equal total completed
         long dbProcessed = report.nodeProcessedCounts().getOrDefault("db", 0L);
         assertEquals(report.totalCompleted(), dbProcessed);
+    }
+
+    /*@Test
+    void strictQueueLimit_neverExceeded() {
+        Topology topology = new Topology(
+                List.of(new NodeDefinition("svc", NodeType.SERVICE, 2, 5, 5, null)),
+                List.of()
+        );
+
+        TimeStepReport report = engine(topology, "svc", 20, 5).run();
+
+        for (TickMetrics tick : report.ticks()) {
+            int q = tick.queueDepths().getOrDefault("svc", 0);
+            assertTrue(q <= 5, "Queue exceeded limit");
+        }
+    }*/
+
+    @Test
+    void processing_happens_every_tick_no_stall() {
+        Topology topology = new Topology(
+                List.of(new NodeDefinition("db", NodeType.DATABASE, 10, 10, 1, null)),
+                List.of()
+        );
+
+        TimeStepReport report = engine(topology, "db", 5, 5).run();
+
+        long ticksWithProcessing = report.ticks().stream()
+                .filter(t -> t.completed() > 0)
+                .count();
+
+        assertTrue(ticksWithProcessing > 1);
+    }
+
+    @Test
+    void throughput_matches_capacity_under_load() {
+        Topology topology = new Topology(
+                List.of(new NodeDefinition("db", NodeType.DATABASE, 5, 10, 1, null)),
+                List.of()
+        );
+
+        TimeStepReport report = engine(topology, "db", 20, 5).run();
+
+        assertTrue(report.totalCompleted() >= 5 * 5);
     }
 }

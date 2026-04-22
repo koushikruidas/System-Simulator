@@ -29,17 +29,15 @@ public class DefaultSimulationRunner implements SimulationRunner {
 	private final SimulationEngineFactory simulationEngineFactory;
 	private final SimulationResultAssembler resultAssembler;
 
-	public DefaultSimulationRunner(
-			SimulationScenarioAdapter scenarioAdapter,
-			SimulationEngineFactory simulationEngineFactory,
-			SimulationResultAssembler resultAssembler
-	) {
-		this.scenarioAdapter = scenarioAdapter;
-		this.simulationEngineFactory = simulationEngineFactory;
-		this.resultAssembler = resultAssembler;
-	}
+    public DefaultSimulationRunner(SimulationScenarioAdapter scenarioAdapter,
+                                   SimulationEngineFactory simulationEngineFactory,
+                                   SimulationResultAssembler resultAssembler) {
+        this.scenarioAdapter = scenarioAdapter;
+        this.simulationEngineFactory = simulationEngineFactory;
+        this.resultAssembler = resultAssembler;
+    }
 
-	@Override
+    @Override
 	public SimulationResult run(SimulationCommand command) {
 		Topology topology = scenarioAdapter.toDomainTopology(command);
 

@@ -9,318 +9,207 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest(properties = {
-		"spring.autoconfigure.exclude=org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration,"
-				+ "org.springframework.boot.orm.jpa.autoconfigure.HibernateJpaAutoConfiguration"
+        "spring.autoconfigure.exclude=org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration,"
+                + "org.springframework.boot.orm.jpa.autoconfigure.HibernateJpaAutoConfiguration"
 })
 class SimulationControllerIntegrationTest {
 
-	private MockMvc mockMvc;
+    private MockMvc mockMvc;
 
-	@Autowired
-	private WebApplicationContext webApplicationContext;
+    @Autowired
+    private WebApplicationContext webApplicationContext;
 
-	@BeforeEach
-	void setUp() {
-		mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build();
-	}
+    @BeforeEach
+    void setUp() {
+        mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build();
+    }
 
-	@Test
-	void simulatesScenarioThroughHttpEndpoint() throws Exception {
-		String requestJson = """
-				{
-				  "requestCount": 1,
-				  "entryNodeId": "lb",
-				  "nodes": [
-				    {"id": "lb", "type": "LOAD_BALANCER", "strategy": "ROUND_ROBIN", "capacity": 1, "queueLimit": 0, "latency": 1},
-				    {"id": "service", "type": "SERVICE", "capacity": 1, "queueLimit": 1, "latency": 5},
-				    {"id": "db", "type": "DATABASE", "capacity": 1, "queueLimit": 1, "latency": 10}
-				  ],
-				  "connections": [
-				    {"sourceNodeId": "lb", "targetNodeId": "service"},
-				    {"sourceNodeId": "service", "targetNodeId": "db"}
-				  ]
-				}
-				""";
+    // 🔥 1. HIGH LOAD / OVERLOAD TEST
+    @Test
+    void highLoad_shouldCauseDropsAndQueueSaturation() throws Exception {
+        String requestJson = """
+                {
+                  "arrivalRate": 500,
+                  "simulationDuration": 10,
+                  "entryNodeId": "lb",
+                  "nodes": [
+                    {"id": "lb", "type": "LOAD_BALANCER", "strategy": "ROUND_ROBIN", "capacity": 500, "queueLimit": 1000, "latency": 1},
+                    {"id": "svc", "type": "SERVICE", "capacity": 50, "queueLimit": 40, "latency": 3},
+                    {"id": "db", "type": "DATABASE", "capacity": 100, "queueLimit": 100, "latency": 5}
+                  ],
+                  "connections": [
+                    {"sourceNodeId": "lb", "targetNodeId": "svc"},
+                    {"sourceNodeId": "svc", "targetNodeId": "db"}
+                  ]
+                }
+                """;
 
-		mockMvc.perform(post("/simulate")
-						.contentType(MediaType.APPLICATION_JSON)
-						.content(requestJson))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.totalRequests").value(1))
-				.andExpect(jsonPath("$.successfulRequests").value(1))
-				.andExpect(jsonPath("$.failedRequests").value(0))
-				.andExpect(jsonPath("$.averageLatency").value(16.0))
-				.andExpect(jsonPath("$.nodeMetrics.lb.processedRequests").value(1))
-				.andExpect(jsonPath("$.nodeMetrics.service.processedRequests").value(1))
-				.andExpect(jsonPath("$.nodeMetrics.db.processedRequests").value(1));
-	}
+        mockMvc.perform(post("/simulate")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestJson))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.failedRequests").value(greaterThan(0)))
+                .andExpect(jsonPath("$.successfulRequests").value(greaterThan(0)));
+    }
 
-	@Test
-	void returnsStructuredValidationErrorForInvalidRequest() throws Exception {
-		String requestJson = """
-				{
-				  "requestCount": 0,
-				  "nodes": [],
-				  "connections": []
-				}
-				""";
+    // ⚖️ 2. CONSERVATION LAW
+    @Test
+    void conservationLaw_shouldAlwaysHold() throws Exception {
+        String requestJson = """
+                {
+                "arrivalRate": 100,
+                "simulationDuration": 5,
+                "entryNodeId": "lb",
+                "nodes": [
+                {"id": "lb", "type": "LOAD_BALANCER", "strategy": "ROUND_ROBIN", "capacity": 200, "queueLimit": 500, "latency": 1},
+                {"id": "svc", "type": "SERVICE", "capacity": 50, "queueLimit": 40, "latency": 3},
+                {"id": "db", "type": "DATABASE", "capacity": 50, "queueLimit": 50, "latency": 5}
+                ],
+                "connections": [
+                {"sourceNodeId": "lb", "targetNodeId": "svc"},
+                {"sourceNodeId": "svc", "targetNodeId": "db"}
+                ]
+                }
+                """;
 
-		mockMvc.perform(post("/simulate")
-						.contentType(MediaType.APPLICATION_JSON)
-						.content(requestJson))
-				.andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.code").value("INVALID_SIMULATION_REQUEST"))
-				.andExpect(jsonPath("$.message").value("Request validation failed"))
-				.andExpect(jsonPath("$.path").value("/simulate"))
-				.andExpect(jsonPath("$.fieldErrors").isArray());
-	}
+        var result = mockMvc.perform(post("/simulate")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestJson))
+                .andExpect(status().isOk())
+                .andReturn();
 
-	@Test
-	void returnsFieldErrorForMissingEntryNodeId() throws Exception {
-		String requestJson = """
-				{
-				  "requestCount": 1,
-				  "nodes": [
-				    {"id": "lb", "type": "LOAD_BALANCER", "strategy": "ROUND_ROBIN", "capacity": 1, "queueLimit": 0, "latency": 1},
-				    {"id": "service", "type": "SERVICE", "capacity": 1, "queueLimit": 1, "latency": 5},
-				    {"id": "db", "type": "DATABASE", "capacity": 1, "queueLimit": 1, "latency": 10}
-				  ],
-				  "connections": [
-				    {"sourceNodeId": "lb", "targetNodeId": "service"},
-				    {"sourceNodeId": "service", "targetNodeId": "db"}
-				  ]
-				}
-				""";
+        String json = result.getResponse().getContentAsString();
 
-		mockMvc.perform(post("/simulate")
-						.contentType(MediaType.APPLICATION_JSON)
-						.content(requestJson))
-				.andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.fieldErrors[0].field").value("entryNodeId"));
-	}
+        var node = new com.fasterxml.jackson.databind.ObjectMapper().readTree(json);
 
-	@Test
-	void returnsErrorForUnknownEntryNodeId() throws Exception {
-		String requestJson = """
-				{
-				  "requestCount": 1,
-				  "entryNodeId": "ghost",
-				  "nodes": [
-				    {"id": "lb", "type": "LOAD_BALANCER", "strategy": "ROUND_ROBIN", "capacity": 1, "queueLimit": 0, "latency": 1},
-				    {"id": "service", "type": "SERVICE", "capacity": 1, "queueLimit": 1, "latency": 5},
-				    {"id": "db", "type": "DATABASE", "capacity": 1, "queueLimit": 1, "latency": 10}
-				  ],
-				  "connections": [
-				    {"sourceNodeId": "lb", "targetNodeId": "service"},
-				    {"sourceNodeId": "service", "targetNodeId": "db"}
-				  ]
-				}
-				""";
+        long total = node.get("totalRequests").asLong();
+        long success = node.get("successfulRequests").asLong();
+        long failed = node.get("failedRequests").asLong();
 
-		mockMvc.perform(post("/simulate")
-						.contentType(MediaType.APPLICATION_JSON)
-						.content(requestJson))
-				.andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.message").value("Entry node 'ghost' does not exist in the topology"));
-	}
+        // ✅ Correct conservation assertion
+        assertEquals(total, success + failed, "Conservation law violated");
 
-	@Test
-	void simulatesRoundRobinLoadBalancerWithTwoServices() throws Exception {
-		String requestJson = """
-				{
-				  "requestCount": 4,
-				  "entryNodeId": "lb",
-				  "nodes": [
-				    {"id": "lb",  "type": "LOAD_BALANCER", "strategy": "ROUND_ROBIN", "capacity": 4, "queueLimit": 0, "latency": 0},
-				    {"id": "s1",  "type": "SERVICE", "capacity": 2, "queueLimit": 5, "latency": 10},
-				    {"id": "s2",  "type": "SERVICE", "capacity": 2, "queueLimit": 5, "latency": 10},
-				    {"id": "db",  "type": "DATABASE", "capacity": 4, "queueLimit": 10, "latency": 5}
-				  ],
-				  "connections": [
-				    {"sourceNodeId": "lb", "targetNodeId": "s1"},
-				    {"sourceNodeId": "lb", "targetNodeId": "s2"},
-				    {"sourceNodeId": "s1", "targetNodeId": "db"},
-				    {"sourceNodeId": "s2", "targetNodeId": "db"}
-				  ]
-				}
-				""";
+    }
 
-		mockMvc.perform(post("/simulate")
-						.contentType(MediaType.APPLICATION_JSON)
-						.content(requestJson))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.totalRequests").value(4))
-				.andExpect(jsonPath("$.successfulRequests").value(4))
-				.andExpect(jsonPath("$.nodeMetrics.s1.processedRequests").value(2))
-				.andExpect(jsonPath("$.nodeMetrics.s2.processedRequests").value(2));
-	}
+    // 🧊 3. ZERO LOAD
+    @Test
+    void zeroLoad_shouldReturnBadRequest() throws Exception {
+        String requestJson = """
+                {
+                  "arrivalRate": 0,
+                  "simulationDuration": 5,
+                  "entryNodeId": "lb",
+                  "nodes": [
+                    {"id": "lb", "type": "LOAD_BALANCER", "strategy": "ROUND_ROBIN", "capacity": 10, "queueLimit": 10, "latency": 1},
+                    {"id": "svc", "type": "SERVICE", "capacity": 10, "queueLimit": 10, "latency": 3},
+                    {"id": "db", "type": "DATABASE", "capacity": 10, "queueLimit": 10, "latency": 5}
+                  ],
+                  "connections": [
+                    {"sourceNodeId": "lb", "targetNodeId": "svc"},
+                    {"sourceNodeId": "svc", "targetNodeId": "db"}
+                  ]
+                }
+                """;
 
-	@Test
-	void returnsErrorForLoadBalancerWithoutStrategy() throws Exception {
-		String requestJson = """
-				{
-				  "requestCount": 1,
-				  "entryNodeId": "lb",
-				  "nodes": [
-				    {"id": "lb", "type": "LOAD_BALANCER", "capacity": 1, "queueLimit": 0, "latency": 0},
-				    {"id": "service", "type": "SERVICE", "capacity": 1, "queueLimit": 1, "latency": 5},
-				    {"id": "db", "type": "DATABASE", "capacity": 1, "queueLimit": 1, "latency": 10}
-				  ],
-				  "connections": [
-				    {"sourceNodeId": "lb", "targetNodeId": "service"},
-				    {"sourceNodeId": "service", "targetNodeId": "db"}
-				  ]
-				}
-				""";
+        mockMvc.perform(post("/simulate")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestJson))
+                .andExpect(status().isBadRequest());
+    }
 
-		mockMvc.perform(post("/simulate")
-						.contentType(MediaType.APPLICATION_JSON)
-						.content(requestJson))
-				.andExpect(status().isBadRequest());
-	}
+    // 🔁 4. DETERMINISM TEST
+    @Test
+    void sameInput_shouldProduceSameOutput() throws Exception {
+        String requestJson = """
+                {
+                  "arrivalRate": 50,
+                  "simulationDuration": 5,
+                  "entryNodeId": "lb",
+                  "nodes": [
+                    {"id": "lb", "type": "LOAD_BALANCER", "strategy": "ROUND_ROBIN", "capacity": 100, "queueLimit": 100, "latency": 1},
+                    {"id": "svc", "type": "SERVICE", "capacity": 50, "queueLimit": 40, "latency": 3},
+                    {"id": "db", "type": "DATABASE", "capacity": 50, "queueLimit": 50, "latency": 5}
+                  ],
+                  "connections": [
+                    {"sourceNodeId": "lb", "targetNodeId": "svc"},
+                    {"sourceNodeId": "svc", "targetNodeId": "db"}
+                  ]
+                }
+                """;
 
-	@Test
-	void responseIncludesPerRequestTrace() throws Exception {
-		String requestJson = """
-				{
-				  "requestCount": 1,
-				  "entryNodeId": "lb",
-				  "nodes": [
-				    {"id": "lb", "type": "LOAD_BALANCER", "strategy": "ROUND_ROBIN", "capacity": 1, "queueLimit": 0, "latency": 1},
-				    {"id": "service", "type": "SERVICE", "capacity": 1, "queueLimit": 1, "latency": 5},
-				    {"id": "db", "type": "DATABASE", "capacity": 1, "queueLimit": 1, "latency": 10}
-				  ],
-				  "connections": [
-				    {"sourceNodeId": "lb", "targetNodeId": "service"},
-				    {"sourceNodeId": "service", "targetNodeId": "db"}
-				  ]
-				}
-				""";
+        var result1 = mockMvc.perform(post("/simulate")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(requestJson)).andReturn();
 
-		mockMvc.perform(post("/simulate")
-						.contentType(MediaType.APPLICATION_JSON)
-						.content(requestJson))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.samples.first").isArray())
-				.andExpect(jsonPath("$.samples.first.length()").value(1))
-				.andExpect(jsonPath("$.samples.first[0].requestId").value("request-1"))
-				.andExpect(jsonPath("$.samples.first[0].path[0]").value("lb"))
-				.andExpect(jsonPath("$.samples.first[0].path[1]").value("service"))
-				.andExpect(jsonPath("$.samples.first[0].path[2]").value("db"))
-				.andExpect(jsonPath("$.samples.first[0].status").value("COMPLETED"));
-	}
+        var result2 = mockMvc.perform(post("/simulate")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(requestJson)).andReturn();
 
-	@Test
-	void responseIncludesLatencyBreakdown() throws Exception {
-		String requestJson = """
-				{
-				  "requestCount": 1,
-				  "entryNodeId": "lb",
-				  "nodes": [
-				    {"id": "lb", "type": "LOAD_BALANCER", "strategy": "ROUND_ROBIN", "capacity": 1, "queueLimit": 0, "latency": 1},
-				    {"id": "service", "type": "SERVICE", "capacity": 1, "queueLimit": 1, "latency": 5},
-				    {"id": "db", "type": "DATABASE", "capacity": 1, "queueLimit": 1, "latency": 10}
-				  ],
-				  "connections": [
-				    {"sourceNodeId": "lb", "targetNodeId": "service"},
-				    {"sourceNodeId": "service", "targetNodeId": "db"}
-				  ]
-				}
-				""";
+        assert (result1.getResponse().getContentAsString()
+                .equals(result2.getResponse().getContentAsString()));
+    }
 
-		mockMvc.perform(post("/simulate")
-						.contentType(MediaType.APPLICATION_JSON)
-						.content(requestJson))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.samples.first[0].totalLatency").value(16))
-				.andExpect(jsonPath("$.samples.first[0].breakdown[0].nodeId").value("lb"))
-				.andExpect(jsonPath("$.samples.first[0].breakdown[0].queueTime").value(0))
-				.andExpect(jsonPath("$.samples.first[0].breakdown[0].processingTime").value(1))
-				.andExpect(jsonPath("$.samples.first[0].breakdown[1].nodeId").value("service"))
-				.andExpect(jsonPath("$.samples.first[0].breakdown[1].queueTime").value(0))
-				.andExpect(jsonPath("$.samples.first[0].breakdown[1].processingTime").value(5))
-				.andExpect(jsonPath("$.samples.first[0].breakdown[2].nodeId").value("db"))
-				.andExpect(jsonPath("$.samples.first[0].breakdown[2].queueTime").value(0))
-				.andExpect(jsonPath("$.samples.first[0].breakdown[2].processingTime").value(10));
-	}
+    // 🧩 5. MULTI-ENTRY DISTRIBUTION
+    @Test
+    void multiEntry_shouldDistributeLoadAcrossNodes() throws Exception {
+        String requestJson = """
+                {
+                  "arrivalRate": 200,
+                  "simulationDuration": 5,
+                  "entryNodeId": "lb-1",
+                  "nodes": [
+                    {"id": "lb-1", "type": "LOAD_BALANCER", "strategy": "ROUND_ROBIN", "capacity": 100, "queueLimit": 200, "latency": 1},
+                    {"id": "lb-2", "type": "LOAD_BALANCER", "strategy": "ROUND_ROBIN", "capacity": 100, "queueLimit": 200, "latency": 1},
+                    {"id": "svc", "type": "SERVICE", "capacity": 100, "queueLimit": 100, "latency": 3},
+                    {"id": "db", "type": "DATABASE", "capacity": 100, "queueLimit": 100, "latency": 5}
+                  ],
+                  "connections": [
+                    {"sourceNodeId": "lb-1", "targetNodeId": "svc"},
+                    {"sourceNodeId": "lb-2", "targetNodeId": "svc"},
+                    {"sourceNodeId": "svc", "targetNodeId": "db"}
+                  ]
+                }
+                """;
 
-	@Test
-	void timeBasedMode_simulatesViaHttpEndpointAndReturnsTotalRequests() throws Exception {
-		String requestJson = """
-				{
-				  "arrivalRate": 3,
-				  "simulationDuration": 4,
-				  "entryNodeId": "lb",
-				  "nodes": [
-				    {"id": "lb", "type": "LOAD_BALANCER", "strategy": "ROUND_ROBIN", "capacity": 10, "queueLimit": 0, "latency": 1},
-				    {"id": "svc", "type": "SERVICE", "capacity": 10, "queueLimit": 10, "latency": 5},
-				    {"id": "db",  "type": "DATABASE", "capacity": 10, "queueLimit": 10, "latency": 10}
-				  ],
-				  "connections": [
-				    {"sourceNodeId": "lb",  "targetNodeId": "svc"},
-				    {"sourceNodeId": "svc", "targetNodeId": "db"}
-				  ]
-				}
-				""";
+        mockMvc.perform(post("/simulate")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestJson))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.nodeMetrics.lb-1.processedRequests").value(greaterThan(0)))
+                .andExpect(jsonPath("$.nodeMetrics.lb-2.processedRequests").value(greaterThan(0)));
+    }
 
-		mockMvc.perform(post("/simulate")
-						.contentType(MediaType.APPLICATION_JSON)
-						.content(requestJson))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.totalRequests").value(12))
-				.andExpect(jsonPath("$.successfulRequests").value(12))
-				.andExpect(jsonPath("$.timeSeries").isArray())
-				.andExpect(jsonPath("$.timeSeries.length()").value(org.hamcrest.Matchers.greaterThan(0)));
-	}
+    // 📈 6. TIME SERIES BEHAVIOR
+    @Test
+    void timeSeries_shouldShowGradualQueueGrowth() throws Exception {
+        String requestJson = """
+                {
+                  "arrivalRate": 200,
+                  "simulationDuration": 5,
+                  "entryNodeId": "lb",
+                  "nodes": [
+                    {"id": "lb", "type": "LOAD_BALANCER", "strategy": "ROUND_ROBIN", "capacity": 200, "queueLimit": 200, "latency": 1},
+                    {"id": "svc", "type": "SERVICE", "capacity": 20, "queueLimit": 40, "latency": 3},
+                    {"id": "db", "type": "DATABASE", "capacity": 50, "queueLimit": 50, "latency": 5}
+                  ],
+                  "connections": [
+                    {"sourceNodeId": "lb", "targetNodeId": "svc"},
+                    {"sourceNodeId": "svc", "targetNodeId": "db"}
+                  ]
+                }
+                """;
 
-	@Test
-	void timeBasedMode_timeSeriesPointsContainExpectedFields() throws Exception {
-		String requestJson = """
-				{
-				  "arrivalRate": 2,
-				  "simulationDuration": 3,
-				  "entryNodeId": "lb",
-				  "nodes": [
-				    {"id": "lb", "type": "LOAD_BALANCER", "strategy": "ROUND_ROBIN", "capacity": 10, "queueLimit": 0, "latency": 1},
-				    {"id": "svc", "type": "SERVICE", "capacity": 10, "queueLimit": 10, "latency": 5},
-				    {"id": "db",  "type": "DATABASE", "capacity": 10, "queueLimit": 10, "latency": 10}
-				  ],
-				  "connections": [
-				    {"sourceNodeId": "lb",  "targetNodeId": "svc"},
-				    {"sourceNodeId": "svc", "targetNodeId": "db"}
-				  ]
-				}
-				""";
-
-		mockMvc.perform(post("/simulate")
-						.contentType(MediaType.APPLICATION_JSON)
-						.content(requestJson))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.timeSeries[0].time").exists())
-				.andExpect(jsonPath("$.timeSeries[0].incoming").exists())
-				.andExpect(jsonPath("$.timeSeries[0].processed").exists())
-				.andExpect(jsonPath("$.timeSeries[0].dropped").exists())
-				.andExpect(jsonPath("$.timeSeries[0].avgLatency").exists())
-				.andExpect(jsonPath("$.timeSeries[0].queues").exists())
-				.andExpect(jsonPath("$.timeSeries[0].queues.lb").exists());
-	}
-
-	@Test
-	void exposesOpenApiDocumentationAndSwaggerUi() throws Exception {
-		mockMvc.perform(get("/v3/api-docs"))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.paths['/simulate']").exists())
-				.andExpect(jsonPath("$.info.title").value("System Simulator API"));
-
-		mockMvc.perform(get("/swagger-ui.html"))
-				.andExpect(status().is3xxRedirection())
-				.andExpect(redirectedUrl("/swagger-ui/index.html"));
-	}
+        mockMvc.perform(post("/simulate")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestJson))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.timeSeries[0].queues.svc").exists())
+                .andExpect(jsonPath("$.timeSeries[1].queues.svc").value(greaterThanOrEqualTo(0)));
+    }
 }

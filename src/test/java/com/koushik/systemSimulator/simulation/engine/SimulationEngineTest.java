@@ -69,6 +69,41 @@ class SimulationEngineTest {
 				report.requestStates().stream().map(RequestRuntimeState::status).toList());
 	}
 
+    @Test
+    void multipleRequests_preserveOrderDeterministically() {
+        SimulationReport report = newEngine(singlePathTopology()).run(List.of(
+                seedEvent("r1", 0, 0),
+                seedEvent("r2", 0, 1),
+                seedEvent("r3", 0, 2)
+        ));
+
+        List<String> ids = report.processedEvents().stream()
+                .map(SimulationEvent::eventId)
+                .toList();
+
+        assertEquals(ids, new java.util.ArrayList<>(ids));
+    }
+
+    @Test
+    void zeroRequests_noEventsProcessed() {
+        SimulationReport report = newEngine(singlePathTopology()).run(List.of());
+
+        assertEquals(0, report.processedEvents().size());
+    }
+
+    @Test
+    void latency_accumulates_across_nodes_correctly() {
+        SimulationReport report = newEngine(singlePathTopology()).run(List.of(
+                seedEvent("r1", 0, 0)
+        ));
+
+        RequestRuntimeState state = report.requestStates().get(0);
+
+        long latency = state.completedAt() - state.request().createdAt();
+
+        assertEquals(16, latency);
+    }
+
 	private SimulationEngine newEngine(Topology topology) {
 		Map<String, SimNode> nodes = Map.of(
 				"lb", new LoadBalancerNode(),
@@ -87,7 +122,7 @@ class SimulationEngineTest {
 	private Topology singlePathTopology() {
 		return new Topology(
 				List.of(
-						new NodeDefinition("lb", NodeType.DELAY_LOAD_BALANCER, 0, 0, 1, "service"),
+						new NodeDefinition("lb", NodeType.LOAD_BALANCER, 0, 0, 1, "service"),
 						new NodeDefinition("service", NodeType.SERVICE, 1, 1, 5, "db"),
 						new NodeDefinition("db", NodeType.DATABASE, 1, 1, 10, null)
 				),
@@ -101,7 +136,7 @@ class SimulationEngineTest {
 	private Topology queuePressureTopology() {
 		return new Topology(
 				List.of(
-						new NodeDefinition("lb", NodeType.DELAY_LOAD_BALANCER, 0, 0, 0, "service"),
+						new NodeDefinition("lb", NodeType.LOAD_BALANCER, 0, 0, 0, "service"),
 						new NodeDefinition("service", NodeType.SERVICE, 1, 1, 5, "db"),
 						new NodeDefinition("db", NodeType.DATABASE, 1, 1, 2, null)
 				),

@@ -107,7 +107,7 @@ class CacheNodeSimulationEngineTest {
 
 		Topology topology = new Topology(
 				List.of(
-						new NodeDefinition("lb", NodeType.DELAY_LOAD_BALANCER, 0, 0, 0L, "cache"),
+						new NodeDefinition("lb", NodeType.LOAD_BALANCER, 0, 0, 0L, "cache"),
 						new NodeDefinition("cache", NodeType.CACHE, 5, 5, missLatency, "db", hitRate, hitLatency),
 						new NodeDefinition("db", NodeType.DATABASE, 5, 5, dbLatency, null)
 				),
@@ -136,6 +136,52 @@ class CacheNodeSimulationEngineTest {
 		}
 	}
 
+    @Test
+    void zeroRequests_noProcessingOccurs() {
+        Topology topology = cacheTopology(0.5, 2L, 10L);
+
+        SimulationReport report = newEngine(topology, 0.5).run(List.of());
+
+        assertEquals(0, report.metrics().completedRequests());
+        assertEquals(0, report.metrics().droppedRequests());
+        assertTrue(report.requestStates().isEmpty());
+    }
+
+    @Test
+    void highLoad_cacheStillRespectsHitLogic() {
+        double hitRate = 0.7;
+        Topology topology = cacheTopology(hitRate, 2L, 10L);
+
+        List<SimulationEvent> events = new java.util.ArrayList<>();
+        for (int i = 0; i < 100; i++) {
+            events.add(seedEvent("r-" + i, 0, i));
+        }
+
+        SimulationReport report = newEngine(topology, hitRate).run(events);
+
+        long cacheHits = report.requestStates().stream()
+                .filter(s -> s.currentNodeId().equals("cache"))
+                .count();
+
+        assertTrue(cacheHits > 0);
+        assertTrue(cacheHits < 100);
+    }
+
+    @Test
+    void latency_neverNegative_and_monotonic() {
+        Topology topology = cacheTopology(0.5, 2L, 10L);
+
+        SimulationReport report = newEngine(topology, 0.5).run(List.of(
+                seedEvent("r1", 0, 0),
+                seedEvent("r2", 0, 1)
+        ));
+
+        for (RequestRuntimeState state : report.requestStates()) {
+            long latency = state.completedAt() - state.request().createdAt();
+            assertTrue(latency >= 0);
+        }
+    }
+
 	private SimulationEngine newEngine(Topology topology, double hitRate) {
 		Map<String, SimNode> nodes = Map.of(
 				"lb", new LoadBalancerNode(),
@@ -155,7 +201,7 @@ class CacheNodeSimulationEngineTest {
 	private Topology cacheTopology(double hitRate, long hitLatency, long missLatency) {
 		return new Topology(
 				List.of(
-						new NodeDefinition("lb", NodeType.DELAY_LOAD_BALANCER, 0, 0, 0L, "cache"),
+						new NodeDefinition("lb", NodeType.LOAD_BALANCER, 0, 0, 0L, "cache"),
 						new NodeDefinition("cache", NodeType.CACHE, 5, 5, missLatency, "db", hitRate, hitLatency),
 						new NodeDefinition("db", NodeType.DATABASE, 5, 5, 5L, null)
 				),
