@@ -62,7 +62,8 @@ public class SimulationScenarioAdapter {
 		List<NodeDefinition> nodeDefinitions = nodeConfigsById.values().stream()
 				.map(nodeConfig -> nodeConfigMapperRegistry.toDomain(
 						nodeConfig,
-						downstreamsBySource.getOrDefault(nodeConfig.getNodeId(), List.of())))
+						downstreamsBySource.getOrDefault(nodeConfig.getNodeId(), List.of()),
+						command.isRealWorldMode()))
 				.toList();
 		return new Topology(nodeDefinitions, links);
 	}

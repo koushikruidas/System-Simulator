@@ -3,6 +3,7 @@ package com.koushik.systemSimulator.application.adapter;
 import com.koushik.systemSimulator.application.model.LbStrategy;
 import com.koushik.systemSimulator.application.model.NodeConfig;
 import com.koushik.systemSimulator.application.model.NodeType;
+import com.koushik.systemSimulator.simulation.config.TimeConverter;
 import com.koushik.systemSimulator.simulation.scenario.NodeDefinition;
 import org.springframework.stereotype.Component;
 
@@ -17,16 +18,25 @@ public class LoadBalancerNodeConfigMapper implements NodeConfigMapper {
 	}
 
 	@Override
-	public NodeDefinition toDomain(NodeConfig config, List<String> downstreamNodeIds) {
+	public NodeDefinition toDomain(NodeConfig config, List<String> downstreamNodeIds, boolean realWorldMode) {
 		com.koushik.systemSimulator.simulation.model.NodeType domainType = mapToDomainType(config.getStrategy(), config.getNodeId());
 		int capacity = requirePositive(config.getCapacity(), "Load balancer " + config.getNodeId() + " must define a positive capacity");
 		int queueLimit = defaultInteger(config.getQueueLimit(), capacity);
+		long latency = valueOrDefault(config.getLatency(), 0L);
+
+		if (realWorldMode) {
+			TimeConverter conv = TimeConverter.defaultConverter();
+			capacity = conv.rpsToCapacityTicks(capacity);
+			queueLimit = defaultInteger(config.getQueueLimit(), capacity);
+			latency = conv.msToLatencyTicks(latency);
+		}
+
 		return new NodeDefinition(
 				config.getNodeId(),
 				domainType,
 				capacity,
 				queueLimit,
-				valueOrDefault(config.getLatency(), 0L),
+				latency,
 				null
 		);
 	}

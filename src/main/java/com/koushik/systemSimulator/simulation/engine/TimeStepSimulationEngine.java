@@ -23,8 +23,9 @@ public final class TimeStepSimulationEngine {
 
     private final Topology topology;
     private final List<String> entryNodeIds;
-    private final int arrivalRate;
-    private final int duration;
+    private final double requestsPerTick;
+    private final int durationTicks;
+    private double fractionalAccumulator = 0.0;
     private final Map<String, BatchNodeState> stateByNodeId;
     private final Map<String, NodeDefinition> defByNodeId;
     private final List<NodeDefinition> nodeDefinitions;
@@ -32,22 +33,22 @@ public final class TimeStepSimulationEngine {
     public TimeStepSimulationEngine(
             Topology topology,
             String entryNodeId,
-            int arrivalRate,
-            int duration
+            double requestsPerTick,
+            int durationTicks
     ) {
-        this(topology, List.of(entryNodeId), arrivalRate, duration);
+        this(topology, List.of(entryNodeId), requestsPerTick, durationTicks);
     }
 
     public TimeStepSimulationEngine(
             Topology topology,
             List<String> entryNodeIds,
-            int arrivalRate,
-            int duration
+            double requestsPerTick,
+            int durationTicks
     ) {
         this.topology = topology;
         this.entryNodeIds = List.copyOf(entryNodeIds);
-        this.arrivalRate = arrivalRate;
-        this.duration = duration;
+        this.requestsPerTick = requestsPerTick;
+        this.durationTicks = durationTicks;
 
         this.nodeDefinitions = List.copyOf(topology.nodeDefinitions());
         this.stateByNodeId = new LinkedHashMap<>();
@@ -99,18 +100,23 @@ public final class TimeStepSimulationEngine {
             pendingDrops.forEach((k, v) -> deliverDrops.merge(k, v, Long::sum));
 
             // ── 3. INJECT new arrivals ────────────────────────────────────────
-            if (tick < duration) {
-                int n    = entryNodeIds.size();
-                int base = arrivalRate / n;
-                int rem  = arrivalRate % n;
-                for (int i = 0; i < n; i++) {
-                    int share = base + (i < rem ? 1 : 0);
-                    if (share > 0) {
-                        stateByNodeId.get(entryNodeIds.get(i)).inputQueue
-                                .addLast(new RequestBatch(share, tick));
+            int tickInjected = 0;
+            if (tick < durationTicks) {
+                fractionalAccumulator += requestsPerTick;
+                int toInject = (int) fractionalAccumulator;
+                fractionalAccumulator -= toInject;
+                if (toInject > 0) {
+                    int n = entryNodeIds.size(), base = toInject / n, rem = toInject % n;
+                    for (int i = 0; i < n; i++) {
+                        int share = base + (i < rem ? 1 : 0);
+                        if (share > 0) {
+                            stateByNodeId.get(entryNodeIds.get(i)).inputQueue
+                                    .addLast(new RequestBatch(share, tick));
+                        }
                     }
+                    totalInjected += toInject;
+                    tickInjected = toInject;
                 }
-                totalInjected += arrivalRate;
             }
 
             // ── 4. SNAPSHOT metrics ───────────────────────────────────────────
@@ -157,11 +163,12 @@ public final class TimeStepSimulationEngine {
             double avgLatency = tickCompleted > 0
                     ? (double) tickLatencySum / tickCompleted : 0.0;
             allTicks.add(new TickMetrics(
-                    tick, tickCompleted, tickDropped, Map.copyOf(queueDepths), avgLatency));
+                    tick, tickCompleted, tickDropped, Map.copyOf(queueDepths), avgLatency,
+                    tickInjected, tickLatencySum));
 
             validateTickInvariants(tick, totalInjected, totalCompleted, totalDropped, pendingDeliveries);
 
-            if (tick >= duration - 1 && pendingDeliveries.isEmpty() && isIdle()) {
+            if (tick >= durationTicks - 1 && pendingDeliveries.isEmpty() && isIdle()) {
                 break;
             }
         }
@@ -205,7 +212,7 @@ public final class TimeStepSimulationEngine {
         boolean isTerminal = def.nodeType() == NodeType.DATABASE || downstreams.isEmpty();
 
         // ADMIT first so completionTick=tick batches are visible to the drain loop below
-        int slotsAvailable = def.capacity() - state.inFlight.size();
+        int slotsAvailable = def.capacityPerTick() - state.inFlight.size();
         while (slotsAvailable > 0 && !state.inputQueue.isEmpty()) {
             RequestBatch queued = state.inputQueue.peekFirst();
             int accept = Math.min(queued.size(), slotsAvailable);
@@ -235,7 +242,7 @@ public final class TimeStepSimulationEngine {
                 } else {
                     forwarded.add(new ForwardedBatch(
                             batch.size(), batch.arrivalTick(), downstreams.get(0),
-                            batch.completionTick() + def.processingLatency()));
+                            batch.completionTick() + def.processingLatencyTicks()));
                 }
             }
         }
@@ -280,7 +287,7 @@ public final class TimeStepSimulationEngine {
 
         // ADMIT first so completionTick=tick batches are visible to the drain loops below
         int totalInFlight = state.hitInFlight.size() + state.missInFlight.size();
-        int slotsAvailable = def.capacity() - totalInFlight;
+        int slotsAvailable = def.capacityPerTick() - totalInFlight;
         while (slotsAvailable > 0 && !state.inputQueue.isEmpty()) {
             RequestBatch queued = state.inputQueue.peekFirst();
             int accept = Math.min(queued.size(), slotsAvailable);
@@ -314,7 +321,7 @@ public final class TimeStepSimulationEngine {
                 hitIt.remove();
                 completedCount += batch.size();
                 processedThisTick += batch.size();
-                latencySum += (long) batch.size() * (batch.completionTick() + def.hitLatency() - batch.arrivalTick());
+                latencySum += (long) batch.size() * (batch.completionTick() + def.hitLatencyTicks() - batch.arrivalTick());
                 state.processedCount += batch.size();
             }
         }
@@ -330,7 +337,7 @@ public final class TimeStepSimulationEngine {
                 if (!downstreams.isEmpty()) {
                     forwarded.add(new ForwardedBatch(
                             batch.size(), batch.arrivalTick(), downstreams.get(0),
-                            batch.completionTick() + def.processingLatency()));
+                            batch.completionTick() + def.processingLatencyTicks()));
                 } else {
                     state.droppedCount += batch.size();
                 }
@@ -371,7 +378,7 @@ public final class TimeStepSimulationEngine {
         int droppedThisTick = 0;
 
         // capacity=0 means unlimited (backward compat); capacity>0 throttles throughput per tick
-        int capacityRemaining = def.capacity() > 0 ? def.capacity() : Integer.MAX_VALUE;
+        int capacityRemaining = def.capacityPerTick() > 0 ? def.capacityPerTick() : Integer.MAX_VALUE;
 
         while (!state.inputQueue.isEmpty() && capacityRemaining > 0) {
             RequestBatch batch = state.inputQueue.peekFirst();
@@ -388,7 +395,7 @@ public final class TimeStepSimulationEngine {
             state.processedCount += accept;
             processedThisTick += accept;
             capacityRemaining -= accept;
-            long deliveryTick = tick + def.processingLatency();
+            long deliveryTick = tick + def.processingLatencyTicks();
 
             if (downstreams.isEmpty()) {
                 state.droppedCount += accept;
@@ -528,20 +535,21 @@ public final class TimeStepSimulationEngine {
 
     private long computeTerminationCap() {
         long latencySum = nodeDefinitions.stream()
-                .mapToLong(NodeDefinition::processingLatency)
+                .mapToLong(NodeDefinition::processingLatencyTicks)
                 .sum();
         long maxLatency = nodeDefinitions.stream()
-                .mapToLong(NodeDefinition::processingLatency)
+                .mapToLong(NodeDefinition::processingLatencyTicks)
                 .max().orElse(1L);
         long maxHitLatency = nodeDefinitions.stream()
-                .mapToLong(NodeDefinition::hitLatency)
+                .mapToLong(NodeDefinition::hitLatencyTicks)
                 .max().orElse(0L);
         // Each forwarding hop adds +1 tick delivery delay.
         long hopBuffer = nodeDefinitions.size();
         // Worst-case drain: all injected requests queue at the slowest node and drain one at a time.
         // In practice the isIdle() check exits the loop long before this cap is reached.
-        long drainBuffer = (long) arrivalRate * duration * Math.max(maxLatency, maxHitLatency + 1);
-        return duration + drainBuffer + latencySum + hopBuffer + 1;
+        long worstCase = (long) Math.ceil(requestsPerTick * durationTicks);
+        long drainBuffer = worstCase * Math.max(maxLatency, maxHitLatency + 1);
+        return durationTicks + drainBuffer + latencySum + hopBuffer + 1;
     }
 
     private void validateTickInvariants(

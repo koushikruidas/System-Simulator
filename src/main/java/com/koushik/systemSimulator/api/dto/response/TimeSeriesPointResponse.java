@@ -18,4 +18,6 @@ public class TimeSeriesPointResponse {
     private int dropped;
     private Map<String, Integer> queues;
     private double avgLatency;
+    private long timeMs;
+    private double avgLatencyMs;
 }

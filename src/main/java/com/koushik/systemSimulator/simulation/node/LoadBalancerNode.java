@@ -32,7 +32,7 @@ public final class LoadBalancerNode implements SimNode {
 		}
 
 		SimulationEvent nextEvent = context.createEvent(
-				context.now() + definition.processingLatency(),
+				context.now() + definition.processingLatencyTicks(),
 				EventType.REQUEST_ARRIVED,
 				event.request(),
 				definition.nodeId(),

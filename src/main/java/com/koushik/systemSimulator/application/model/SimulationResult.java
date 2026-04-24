@@ -17,6 +17,7 @@ public class SimulationResult {
     private final int successfulRequests;
     private final int failedRequests;
     private final double averageLatency;
+    private final double averageLatencyMs;
 
     @Singular("nodeMetric")
     private final Map<String, NodeMetrics> nodeMetrics;

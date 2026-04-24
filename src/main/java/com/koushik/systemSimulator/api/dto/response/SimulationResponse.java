@@ -18,6 +18,7 @@ public class SimulationResponse {
     private int successfulRequests;
     private int failedRequests;
     private double averageLatency;
+    private double averageLatencyMs;
     private Map<String, NodeMetricsResponse> nodeMetrics;
     private List<FlowGroupResponse> flowSummary;
     private Map<Long, Long> latencyDistribution;

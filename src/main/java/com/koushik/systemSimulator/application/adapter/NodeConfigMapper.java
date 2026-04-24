@@ -10,5 +10,5 @@ public interface NodeConfigMapper {
 
 	NodeType supportedType();
 
-	NodeDefinition toDomain(NodeConfig config, List<String> downstreamNodeIds);
+	NodeDefinition toDomain(NodeConfig config, List<String> downstreamNodeIds, boolean realWorldMode);
 }

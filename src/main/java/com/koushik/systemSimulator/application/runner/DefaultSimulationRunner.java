@@ -50,8 +50,8 @@ public class DefaultSimulationRunner implements SimulationRunner {
 			TimeStepSimulationEngine engine = new TimeStepSimulationEngine(
 					topology,
 					entryNodeIds,
-					command.getArrivalRate(),
-					command.getSimulationDuration());
+					command.getEffectiveRequestsPerTick(),
+					command.getEffectiveDurationTicks());
 			TimeStepReport report = engine.run();
 			return resultAssembler.assembleFromTimeStep(command, report);
 		}
@@ -125,8 +125,8 @@ public class DefaultSimulationRunner implements SimulationRunner {
 		TimeStepSimulationEngine newEngine = new TimeStepSimulationEngine(
 				topology,
 				resolveEntryNodes(topology, command),
-				command.getArrivalRate(),
-				command.getSimulationDuration());
+				command.getEffectiveRequestsPerTick(),
+				command.getEffectiveDurationTicks());
 		TimeStepReport newReport = newEngine.run();
 		long newCompleted   = newReport.totalCompleted();
 		long newDropped     = newReport.totalDropped();

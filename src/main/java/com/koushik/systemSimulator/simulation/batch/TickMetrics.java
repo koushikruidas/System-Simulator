@@ -7,5 +7,7 @@ public record TickMetrics(
         int completed,
         int dropped,
         Map<String, Integer> queueDepths,
-        double avgLatency
+        double avgLatency,
+        int injected,
+        long latencySum
 ) {}

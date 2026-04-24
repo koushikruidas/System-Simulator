@@ -34,4 +34,6 @@ public class SimulationRequest {
 
 	@NotBlank
 	private String entryNodeId;
+
+	private String timeUnit;
 }

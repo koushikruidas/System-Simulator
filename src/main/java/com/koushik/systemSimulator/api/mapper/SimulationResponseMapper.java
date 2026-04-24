@@ -53,6 +53,7 @@ public class SimulationResponseMapper {
                         .time(p.getTime()).incoming(p.getIncoming())
                         .processed(p.getProcessed()).dropped(p.getDropped())
                         .queues(p.getQueues()).avgLatency(p.getAvgLatency())
+                        .timeMs(p.getTimeMs()).avgLatencyMs(p.getAvgLatencyMs())
                         .build())
                 .toList();
 
@@ -61,6 +62,7 @@ public class SimulationResponseMapper {
                 .successfulRequests(result.getSuccessfulRequests())
                 .failedRequests(result.getFailedRequests())
                 .averageLatency(result.getAverageLatency())
+                .averageLatencyMs(result.getAverageLatencyMs())
                 .nodeMetrics(Map.copyOf(nodeMetrics))
                 .flowSummary(flowSummary)
                 .latencyDistribution(result.getLatencyDistribution())

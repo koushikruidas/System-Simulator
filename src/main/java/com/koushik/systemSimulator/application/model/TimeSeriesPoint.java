@@ -14,4 +14,6 @@ public class TimeSeriesPoint {
     private final int dropped;
     private final Map<String, Integer> queues;
     private final double avgLatency;
+    private final long timeMs;
+    private final double avgLatencyMs;
 }

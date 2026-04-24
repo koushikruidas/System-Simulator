@@ -44,7 +44,7 @@ public final class CacheNode implements SimNode {
 		NodeDefinition definition = context.currentNodeDefinition();
 		NodeResult.Builder result = NodeResult.builder();
 
-		if (context.currentNodeState().inFlight() < definition.capacity()) {
+		if (context.currentNodeState().inFlight() < definition.capacityPerTick()) {
 			startProcessing(event.request(), definition, context, result);
 		} else if (context.currentNodeState().queueSize() < definition.queueLimit()) {
 			result.mutate(StateMutations.enqueueRequest(definition.nodeId(), event.request()));
@@ -100,7 +100,7 @@ public final class CacheNode implements SimNode {
 		if (hit) hitsOwedScaled -= SCALE;
 		pendingDecisions.put(request.requestId(), hit);
 
-		long latency = hit ? hitLatency : definition.processingLatency();
+		long latency = hit ? hitLatency : definition.processingLatencyTicks();
 		result.mutate(StateMutations.incrementInFlight(definition.nodeId()))
 				.mutate(StateMutations.markRequestInProgress(definition.nodeId(), request))
 				.emit(context.createEvent(

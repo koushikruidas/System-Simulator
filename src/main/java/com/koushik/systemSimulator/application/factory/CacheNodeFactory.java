@@ -16,6 +16,6 @@ public class CacheNodeFactory implements SimNodeFactory {
 
 	@Override
 	public SimNode create(NodeDefinition nodeDefinition) {
-		return new CacheNode(nodeDefinition.hitRate(), nodeDefinition.hitLatency());
+		return new CacheNode(nodeDefinition.hitRate(), nodeDefinition.hitLatencyTicks());
 	}
 }

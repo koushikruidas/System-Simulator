@@ -11,6 +11,7 @@ import com.koushik.systemSimulator.application.model.RequestTrace;
 import com.koushik.systemSimulator.application.model.SimulationCommand;
 import com.koushik.systemSimulator.application.model.SimulationResult;
 import com.koushik.systemSimulator.application.model.TimeSeriesPoint;
+import com.koushik.systemSimulator.simulation.config.TimeConverter;
 import com.koushik.systemSimulator.simulation.state.RequestRuntimeState;
 import com.koushik.systemSimulator.simulation.engine.SimulationReport;
 import com.koushik.systemSimulator.simulation.engine.TimeStepReport;
@@ -120,29 +121,57 @@ public class SimulationResultAssembler {
                     .build());
         }
 
-        int duration = command.getSimulationDuration();
-        int arrivalRate = command.getArrivalRate();
-        List<TimeSeriesPoint> timeSeries = new ArrayList<>();
-        for (TickMetrics tm : report.ticks()) {
-            int incoming = tm.tick() < duration ? arrivalRate : 0;
-            timeSeries.add(TimeSeriesPoint.builder()
-                    .time((int) tm.tick())
-                    .incoming(incoming)
-                    .processed(tm.completed())
-                    .dropped(tm.dropped())
-                    .queues(Map.copyOf(tm.queueDepths()))
-                    .avgLatency(tm.avgLatency())
-                    .build());
+        TimeConverter conv = TimeConverter.defaultConverter();
+        boolean realWorld = command.isRealWorldMode();
+        int ticksPerSec = conv.ticksPerSecond();
+
+        List<TimeSeriesPoint> timeSeries;
+        if (realWorld) {
+            // Group ticks by second bucket: bucketKey = floor(tick / ticksPerSecond).
+            // time(sec) and timeMs are derived from this integer bucket key — NOT from converting
+            // any individual tick back to ms. This means all ticks [100k .. 100k+99] → second k.
+            Map<Integer, List<TickMetrics>> bySecond = new LinkedHashMap<>();
+            for (TickMetrics tm : report.ticks())
+                bySecond.computeIfAbsent((int) (tm.tick() / ticksPerSec), k -> new ArrayList<>()).add(tm);
+
+            timeSeries = bySecond.entrySet().stream().map(e -> {
+                int sec = e.getKey();
+                List<TickMetrics> bucket = e.getValue();
+                int incoming = bucket.stream().mapToInt(TickMetrics::injected).sum();
+                int processed = bucket.stream().mapToInt(TickMetrics::completed).sum();
+                int dropped = bucket.stream().mapToInt(TickMetrics::dropped).sum();
+                // Use latencySum directly — avoids floating-point error from (avgLatency * completed) reconstruction
+                long totalLatTicks = bucket.stream().mapToLong(TickMetrics::latencySum).sum();
+                double avgLatTicks = processed > 0 ? (double) totalLatTicks / processed : 0.0;
+                Map<String, Integer> queues = Map.copyOf(bucket.get(bucket.size() - 1).queueDepths());
+                return TimeSeriesPoint.builder()
+                        .time(sec).incoming(incoming).processed(processed).dropped(dropped)
+                        .queues(queues).avgLatency(avgLatTicks)
+                        .timeMs((long) sec * 1000)
+                        .avgLatencyMs(conv.avgLatencyToMs(avgLatTicks))
+                        .build();
+            }).toList();
+        } else {
+            // Per-tick output: use tm.injected() for incoming — consistent with REAL_WORLD mode and
+            // avoids the null vs 0 ambiguity of command.getArrivalRate() (null and 0 both become 0).
+            timeSeries = report.ticks().stream().map(tm -> TimeSeriesPoint.builder()
+                    .time((int) tm.tick()).incoming(tm.injected())
+                    .processed(tm.completed()).dropped(tm.dropped())
+                    .queues(Map.copyOf(tm.queueDepths())).avgLatency(tm.avgLatency())
+                    .timeMs(conv.toMillis(tm.tick()))
+                    .avgLatencyMs(conv.avgLatencyToMs(tm.avgLatency()))
+                    .build()).toList();
         }
 
-        double averageLatency = report.totalCompleted() > 0
+        double avgLatTicks = report.totalCompleted() > 0
                 ? (double) report.totalLatencySum() / report.totalCompleted() : 0.0;
 
         return SimulationResult.builder()
                 .totalRequests((int) report.totalInjected())
                 .successfulRequests((int) report.totalCompleted())
                 .failedRequests((int) report.totalDropped())
-                .averageLatency(averageLatency)
+                .averageLatency(avgLatTicks)
+                .averageLatencyMs(conv.avgLatencyToMs(avgLatTicks))
                 .nodeMetrics(nodeMetrics)
                 .flowGroups(List.of())
                 .latencyDistribution(Map.of())

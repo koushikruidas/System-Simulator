@@ -31,7 +31,7 @@ abstract class AbstractProcessingNode implements SimNode {
 		NodeDefinition definition = context.currentNodeDefinition();
 		NodeResult.Builder result = NodeResult.builder();
 
-		if (context.currentNodeState().inFlight() < definition.capacity()) {
+		if (context.currentNodeState().inFlight() < definition.capacityPerTick()) {
 			startProcessing(event.request(), definition, context, result);
 			return result.build();
 		}
@@ -69,7 +69,7 @@ abstract class AbstractProcessingNode implements SimNode {
 		result.mutate(StateMutations.incrementInFlight(definition.nodeId()))
 				.mutate(StateMutations.markRequestInProgress(definition.nodeId(), request))
 				.emit(context.createEvent(
-						context.now() + definition.processingLatency(),
+						context.now() + definition.processingLatencyTicks(),
 						EventType.PROCESSING_COMPLETED,
 						request,
 						definition.nodeId(),

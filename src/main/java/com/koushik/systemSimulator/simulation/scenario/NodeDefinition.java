@@ -7,30 +7,36 @@ import java.util.Objects;
 public record NodeDefinition(
 		String nodeId,
 		NodeType nodeType,
-		int capacity,
+		int capacityPerTick,
 		int queueLimit,
-		long processingLatency,
+		long processingLatencyTicks,
 		String downstreamNodeId,
 		double hitRate,
-		long hitLatency
+		long hitLatencyTicks
 ) {
 
 	public NodeDefinition {
 		Objects.requireNonNull(nodeId, "nodeId must not be null");
 		Objects.requireNonNull(nodeType, "nodeType must not be null");
-		if (capacity < 0) {
-			throw new IllegalArgumentException("capacity must be >= 0");
+		if (capacityPerTick < 0) {
+			throw new IllegalArgumentException("capacityPerTick must be >= 0");
 		}
 		if (queueLimit < 0) {
 			throw new IllegalArgumentException("queueLimit must be >= 0");
 		}
-		if (processingLatency < 0) {
-			throw new IllegalArgumentException("processingLatency must be >= 0");
+		if (processingLatencyTicks < 0) {
+			throw new IllegalArgumentException("processingLatencyTicks must be >= 0");
 		}
 	}
 
-	public NodeDefinition(String nodeId, NodeType nodeType, int capacity, int queueLimit,
-						  long processingLatency, String downstreamNodeId) {
-		this(nodeId, nodeType, capacity, queueLimit, processingLatency, downstreamNodeId, 0.0, 0L);
+	public NodeDefinition(String nodeId, NodeType nodeType, int capacityPerTick, int queueLimit,
+						  long processingLatencyTicks, String downstreamNodeId) {
+		this(nodeId, nodeType, capacityPerTick, queueLimit, processingLatencyTicks, downstreamNodeId, 0.0, 0L);
+	}
+
+	/** @deprecated Use {@link #hitLatencyTicks()} */
+	@Deprecated
+	public long hitLatency() {
+		return hitLatencyTicks;
 	}
 }
